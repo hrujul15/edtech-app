@@ -1,0 +1,25 @@
+{
+    "flutter": {
+        "platforms": {
+            "android": {
+                "default": {
+                    "projectId": "edtech-app-26eb7",
+                    "appId": "1:1020739408229:android:441a087ae2a1741365d18c",
+                    "fileOutput": "android/app/google-services.json"
+                }
+            },
+            "dart": {
+                "lib/firebase_options.dart": {
+                    "projectId": "edtech-app-26eb7",
+                    "configurations": {
+                        "android": "1:1020739408229:android:441a087ae2a1741365d18c",
+                        "ios": "1:1020739408229:ios:a5a0608f8dce407665d18c",
+                        "macos": "1:1020739408229:ios:a5a0608f8dce407665d18c",
+                        "web": "1:1020739408229:web:b708b9f76290a63665d18c",
+                        "windows": "1:1020739408229:web:e7f0dec990e9cc8665d18c"
+                    }
+                }
+            }
+        }
+    }
+}
