@@ -13,30 +13,24 @@ class AuthService {
     required String password,
     required String name,
   }) async {
-    try {
-      // Create user in Firebase Auth
-      UserCredential userCredential = await _auth
-          .createUserWithEmailAndPassword(email: email, password: password);
+    // Create user in Firebase Auth
+    UserCredential userCredential = await _auth
+        .createUserWithEmailAndPassword(email: email, password: password);
 
-      final uid = userCredential.user!.uid;
+    final uid = userCredential.user!.uid;
 
-      // Create user document in Firestore
-      final userModel = UserModel(
-        uid: uid,
-        name: name,
-        email: email,
-        interests: [],
-        categoryScores: {},
-      );
+    // Create user document in Firestore
+    final userModel = UserModel(
+      uid: uid,
+      name: name,
+      email: email,
+      interests: [],
+      categoryScores: {},
+    );
 
-      await _firestore.collection('users').doc(uid).set(userModel.toJson());
+    await _firestore.collection('users').doc(uid).set(userModel.toJson());
 
-      return userModel;
-    } on FirebaseAuthException catch (e) {
-      rethrow;
-    } catch (e) {
-      rethrow;
-    }
+    return userModel;
   }
 
   /// Sign in with email and password
@@ -44,30 +38,24 @@ class AuthService {
     required String email,
     required String password,
   }) async {
-    try {
-      UserCredential userCredential = await _auth.signInWithEmailAndPassword(
-        email: email,
-        password: password,
-      );
+    UserCredential userCredential = await _auth.signInWithEmailAndPassword(
+      email: email,
+      password: password,
+    );
 
-      final uid = userCredential.user!.uid;
+    final uid = userCredential.user!.uid;
 
-      // Fetch user data from Firestore
-      DocumentSnapshot doc = await _firestore
-          .collection('users')
-          .doc(uid)
-          .get();
+    // Fetch user data from Firestore
+    DocumentSnapshot doc = await _firestore
+        .collection('users')
+        .doc(uid)
+        .get();
 
-      if (doc.exists) {
-        return UserModel.fromJson(doc.data() as Map<String, dynamic>);
-      }
-
-      return null;
-    } on FirebaseAuthException catch (e) {
-      rethrow;
-    } catch (e) {
-      rethrow;
+    if (doc.exists) {
+      return UserModel.fromJson(doc.data() as Map<String, dynamic>);
     }
+
+    return null;
   }
 
   /// Sign out the current user

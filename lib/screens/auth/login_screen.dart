@@ -42,20 +42,23 @@ class _LoginScreenState extends State<LoginScreen> {
         password: _passwordController.text,
       );
 
-      if (user != null) {
+      if (user != null && mounted) {
         // Navigate to home screen on success
-        if (mounted) {
-          Navigator.of(context).pushReplacementNamed('/home');
-        }
+        Navigator.of(context).pushReplacementNamed('/home');
       }
     } on FirebaseAuthException catch (e) {
-      setState(() {
-        _errorMessage = _getErrorMessage(e.code);
-      });
+      if (mounted) {
+        setState(() {
+          _errorMessage = _getErrorMessage(e.code);
+        });
+      }
     } catch (e) {
-      setState(() {
-        _errorMessage = 'An error occurred. Please try again.';
-      });
+      if (mounted) {
+        setState(() {
+          _errorMessage = e.toString();
+        });
+      }
+      print('Login error: $e');
     } finally {
       if (mounted) {
         setState(() {
