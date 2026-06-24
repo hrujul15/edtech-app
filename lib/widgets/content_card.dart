@@ -30,7 +30,7 @@ class ContentCard extends StatelessWidget {
               width: double.infinity,
               fit: BoxFit.cover,
               errorBuilder: (context, error, stackTrace) => 
-                  const Container(height: 180, color: Colors.grey),
+                  Container(height: 180, color: Colors.grey),
             ),
             
           Padding(

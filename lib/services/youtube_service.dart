@@ -4,7 +4,7 @@ import 'package:http/http.dart' as http;
 import '../models/content_model.dart';
 
 class YouTubeService {
-  // Key is loaded from the .env file at runtime — never hardcoded.
+  // Key is loaded from the .env file at runtime 
   String get _apiKey => dotenv.env['YOUTUBE_API_KEY'] ?? '';
 
   Future<List<Content>> searchYouTube(String query) async {

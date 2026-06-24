@@ -7,6 +7,7 @@ import 'screens/auth/login_screen.dart';
 import 'screens/auth/signup_screen.dart';
 import 'screens/home/home_screen.dart';
 import 'screens/onboarding/interest_picker_screen.dart';
+import 'screens/search/search_screen.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -24,24 +25,7 @@ class MyApp extends StatelessWidget {
     return MaterialApp(
       title: 'EdTech App',
       debugShowCheckedModeBanner: false,
-      home: StreamBuilder<User?>(
-        stream: FirebaseAuth.instance.authStateChanges(),
-        builder: (context, snapshot) {
-          if (snapshot.connectionState == ConnectionState.waiting) {
-            return const Scaffold(
-              body: Center(child: CircularProgressIndicator()),
-            );
-          }
-
-          // User is logged in
-          if (snapshot.hasData) {
-            return const HomeScreen();
-          }
-
-          // User is not logged in
-          return const LoginScreen();
-        },
-      ),
+      home: const SearchScreen(),
       routes: {
         '/home': (context) => const HomeScreen(),
         '/login': (context) => const LoginScreen(),
