@@ -7,6 +7,7 @@ class RankingService {
     List<Content> items,
     String query,
     Map<String, double> userCategoryScores,
+  ) {
     // Map common abbreviations to full terms
     final Map<String, String> commonAbbreviations = {
       'dsa': 'data structure algorithm',
