@@ -1,7 +1,15 @@
 import 'package:flutter/material.dart';
+import 'package:firebase_auth/firebase_auth.dart';
+import 'package:edtech_app/models/content_model.dart';
+import 'package:edtech_app/models/user_model.dart';
 import 'package:edtech_app/services/auth_service.dart';
 import 'package:edtech_app/services/firestore_service.dart';
-import 'package:edtech_app/models/user_model.dart';
+import 'package:edtech_app/services/youtube_service.dart';
+import 'package:edtech_app/services/devto_service.dart';
+import 'package:edtech_app/services/ranking_service.dart';
+import 'package:edtech_app/widgets/content_card.dart';
+import 'package:edtech_app/screens/search/search_screen.dart';
+import 'package:edtech_app/screens/saved/saved_screen.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({Key? key}) : super(key: key);
@@ -11,19 +19,28 @@ class HomeScreen extends StatefulWidget {
 }
 
 class _HomeScreenState extends State<HomeScreen> {
-  final _authService = AuthService();
-  final _firestoreService = FirestoreService();
+  final AuthService _authService = AuthService();
+  final FirestoreService _firestoreService = FirestoreService();
+  final YouTubeService _youtubeService = YouTubeService();
+  final DevToService _devtoService = DevToService();
+  final RankingService _rankingService = RankingService();
+
+  int _currentIndex = 0; // Bottom nav index
 
   bool _isLoading = true;
   UserModel? _userModel;
 
+  /// Top 2 categories mapped to their fetched content
+  List<_CategorySection> _categorySections = [];
+
   @override
   void initState() {
     super.initState();
-    _checkInterests();
+    _loadHomeData();
   }
 
-  Future<void> _checkInterests() async {
+  /// Check interests, fetch user, pick top 2 categories, call APIs
+  Future<void> _loadHomeData() async {
     try {
       final uid = _authService.currentUid;
       if (uid == null) {
@@ -34,25 +51,64 @@ class _HomeScreenState extends State<HomeScreen> {
       }
 
       final user = await _firestoreService.getUser(uid);
+
+      if (mounted && user.interests.isEmpty) {
+        Navigator.of(context).pushReplacementNamed('/onboarding');
+        return;
+      }
+
+      // Determine top 2 categories by score
+      final topCategories = _getTopCategories(user.categoryScores, 2);
+
+      // For each top category, fetch content from both APIs
+      final sections = <_CategorySection>[];
+      for (final category in topCategories) {
+        final results = await Future.wait<List<Content>>([
+          _youtubeService.searchYouTube(category),
+          _devtoService.searchDevTo(category),
+        ]);
+        final combined = [...results[0], ...results[1]];
+        final ranked = _rankingService.rankContent(
+          combined,
+          category,
+          user.categoryScores,
+        );
+        sections.add(_CategorySection(category: category, items: ranked));
+      }
+
       if (mounted) {
-        if (user.interests.isEmpty) {
-          // Redirect to onboarding
-          Navigator.of(context).pushReplacementNamed('/onboarding');
-        } else {
-          setState(() {
-            _userModel = user;
-            _isLoading = false;
-          });
-        }
+        setState(() {
+          _userModel = user;
+          _categorySections = sections;
+          _isLoading = false;
+        });
       }
     } catch (e) {
-      print('Error checking interests: $e');
+      debugPrint('Error loading home data: $e');
       if (mounted) {
         setState(() {
           _isLoading = false;
         });
       }
     }
+  }
+
+  /// Return up to [count] categories sorted by highest score descending.
+  /// Falls back to user interests if categoryScores is empty.
+  List<String> _getTopCategories(
+    Map<String, double> categoryScores,
+    int count,
+  ) {
+    if (categoryScores.isEmpty) {
+      // Fall back to user interests
+      final interests = _userModel?.interests ?? [];
+      return interests.take(count).toList();
+    }
+
+    final sorted = categoryScores.entries.toList()
+      ..sort((a, b) => b.value.compareTo(a.value));
+
+    return sorted.take(count).map((e) => e.key).toList();
   }
 
   void _handleLogout() async {
@@ -62,71 +118,195 @@ class _HomeScreenState extends State<HomeScreen> {
     }
   }
 
-  @override
-  Widget build(BuildContext context) {
+  // ──────────────────────────────────────
+  //  Build methods for each tab
+  // ──────────────────────────────────────
+
+  /// HOME tab body
+  Widget _buildHomeBody() {
     if (_isLoading) {
-      return const Scaffold(
-        body: Center(
-          child: CircularProgressIndicator(),
-        ),
-      );
+      return const Center(child: CircularProgressIndicator());
     }
 
-    final user = _authService.currentUser;
-
-    return Scaffold(
-      appBar: AppBar(title: const Text('Home'), elevation: 0),
-      body: SafeArea(
-        child: Padding(
-          padding: const EdgeInsets.all(24.0),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              const SizedBox(height: 40),
-              Text(
-                'Welcome, ${_userModel?.name ?? 'Learner'}!',
-                style: Theme.of(context).textTheme.headlineSmall,
+    return RefreshIndicator(
+      onRefresh: _loadHomeData,
+      child: ListView(
+        children: [
+          // Search bar at top
+          GestureDetector(
+            onTap: () {
+              setState(() => _currentIndex = 1); // Switch to search tab
+            },
+            child: Container(
+              margin: const EdgeInsets.fromLTRB(16, 16, 16, 8),
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+              decoration: BoxDecoration(
+                color: Colors.grey[200],
+                borderRadius: BorderRadius.circular(12),
               ),
-              const SizedBox(height: 16),
-              if (user != null)
-                Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      'Email: ${user.email}',
-                      style: Theme.of(context).textTheme.bodyMedium,
-                    ),
-                    const SizedBox(height: 8),
-                    Text(
-                      'User ID: ${user.uid}',
-                      style: Theme.of(context).textTheme.bodySmall,
-                    ),
-                    const SizedBox(height: 8),
-                    Text(
-                      'Interests: ${_userModel?.interests.join(', ') ?? ''}',
-                      style: Theme.of(context).textTheme.bodyMedium,
-                    ),
-                  ],
-                ),
-              const SizedBox(height: 40),
-              ElevatedButton(
-                onPressed: _handleLogout,
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: Colors.red,
-                  padding: const EdgeInsets.symmetric(
-                    vertical: 12,
-                    horizontal: 24,
+              child: Row(
+                children: [
+                  Icon(Icons.search, color: Colors.grey[600]),
+                  const SizedBox(width: 12),
+                  Text(
+                    'Search articles and videos...',
+                    style: TextStyle(color: Colors.grey[600], fontSize: 16),
                   ),
-                ),
-                child: const Text(
-                  'Sign Out',
-                  style: TextStyle(color: Colors.white),
+                ],
+              ),
+            ),
+          ),
+
+          const SizedBox(height: 8),
+
+          // Welcome header
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 16),
+            child: Text(
+              'Welcome, ${_userModel?.name ?? 'Learner'}!',
+              style: Theme.of(context).textTheme.headlineSmall,
+            ),
+          ),
+
+          const SizedBox(height: 16),
+
+          // Category sections
+          if (_categorySections.isEmpty)
+            const Padding(
+              padding: EdgeInsets.all(32),
+              child: Center(
+                child: Text(
+                  'Start exploring to get personalised recommendations!',
+                  textAlign: TextAlign.center,
+                  style: TextStyle(color: Colors.grey),
                 ),
               ),
-            ],
+            )
+          else
+            ..._categorySections.map(
+              (section) => _buildCategorySection(section),
+            ),
+
+          const SizedBox(height: 24),
+
+          // Logout button
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 16),
+            child: OutlinedButton.icon(
+              onPressed: _handleLogout,
+              icon: const Icon(Icons.logout, color: Colors.red),
+              label: const Text(
+                'Sign Out',
+                style: TextStyle(color: Colors.red),
+              ),
+              style: OutlinedButton.styleFrom(
+                side: const BorderSide(color: Colors.red),
+              ),
+            ),
           ),
-        ),
+
+          const SizedBox(height: 32),
+        ],
       ),
     );
   }
+
+  /// Build a horizontal scrollable section for one category
+  Widget _buildCategorySection(_CategorySection section) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+          child: Text(
+            'Because you like ${section.category}',
+            style: const TextStyle(
+              fontSize: 18,
+              fontWeight: FontWeight.bold,
+            ),
+          ),
+        ),
+        SizedBox(
+          height: 280,
+          child: section.items.isEmpty
+              ? const Center(child: Text('No content found'))
+              : ListView.builder(
+                  scrollDirection: Axis.horizontal,
+                  padding: const EdgeInsets.symmetric(horizontal: 8),
+                  itemCount: section.items.length,
+                  itemBuilder: (context, index) {
+                    final content = section.items[index];
+                    return SizedBox(
+                      width: 280,
+                      child: ContentCard(
+                        content: content,
+                        onSave: () => _saveContent(content),
+                      ),
+                    );
+                  },
+                ),
+        ),
+      ],
+    );
+  }
+
+  /// Save content to Firestore
+  Future<void> _saveContent(Content content) async {
+    final uid = _authService.currentUid;
+    if (uid == null) return;
+
+    try {
+      await _firestoreService.saveContent(uid, content);
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Saved "${content.title}"')),
+        );
+      }
+    } catch (e) {
+      debugPrint('Error saving content: $e');
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    // Pages for bottom nav tabs
+    final List<Widget> pages = [
+      _buildHomeBody(),
+      const SearchScreen(),
+      const SavedScreen(),
+    ];
+
+    return Scaffold(
+      body: IndexedStack(
+        index: _currentIndex,
+        children: pages,
+      ),
+      bottomNavigationBar: BottomNavigationBar(
+        currentIndex: _currentIndex,
+        onTap: (index) => setState(() => _currentIndex = index),
+        items: const [
+          BottomNavigationBarItem(
+            icon: Icon(Icons.home),
+            label: 'Home',
+          ),
+          BottomNavigationBarItem(
+            icon: Icon(Icons.search),
+            label: 'Search',
+          ),
+          BottomNavigationBarItem(
+            icon: Icon(Icons.bookmark),
+            label: 'Saved',
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// Internal model to pair a category name with its fetched content items
+class _CategorySection {
+  final String category;
+  final List<Content> items;
+
+  _CategorySection({required this.category, required this.items});
 }
