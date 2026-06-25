@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'dart:math';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:http/http.dart' as http;
@@ -50,22 +51,35 @@ class YouTubeService {
         }
 
         final Map<String, int> durationsSec = {};
+        final Map<String, int> viewsMap = {};
+        final Map<String, int> likesMap = {};
         if (videoIds.isNotEmpty) {
           final idsParam = videoIds.join(',');
           final detailsUrl = Uri.parse(
-            'https://www.googleapis.com/youtube/v3/videos?part=contentDetails&id=$idsParam&key=$_apiKey',
+            'https://www.googleapis.com/youtube/v3/videos?part=contentDetails,statistics&id=$idsParam&key=$_apiKey',
           );
 
           final detailsResponse = await http.get(detailsUrl);
           if (detailsResponse.statusCode == 200) {
-            final Map<String, dynamic> detailsData = json.decode(detailsResponse.body);
+            final Map<String, dynamic> detailsData = json.decode(
+              detailsResponse.body,
+            );
             final List<dynamic> detailsItems = detailsData['items'] ?? [];
             for (final detailsItem in detailsItems) {
               final id = detailsItem['id'] as String? ?? '';
-              final durationIso = detailsItem['contentDetails']?['duration'] as String? ?? '';
+              final durationIso =
+                  detailsItem['contentDetails']?['duration'] as String? ?? '';
               if (id.isNotEmpty && durationIso.isNotEmpty) {
                 durationsSec[id] = _parseIsoDurationToSeconds(durationIso);
               }
+
+              final stats = detailsItem['statistics'] ?? {};
+
+              viewsMap[id] =
+                  int.tryParse(stats['viewCount']?.toString() ?? '0') ?? 0;
+
+              likesMap[id] =
+                  int.tryParse(stats['likeCount']?.toString() ?? '0') ?? 0;
             }
           }
         }
@@ -81,18 +95,22 @@ class YouTubeService {
               '';
           final duration = durationsSec[videoId] ?? 0;
           final bool isShort = duration > 0 && duration < 60;
+          final views = viewsMap[videoId] ?? 0;
+          final likes = likesMap[videoId] ?? 0;
 
-          results.add(Content(
-            id: 'youtube_$videoId',
-            title: snippet['title'] as String? ?? '',
-            description: snippet['description'] as String? ?? '',
-            thumbnail: thumbnail,
-            source: 'youtube',
-            contentType: isShort ? 'short' : 'video',
-            url: 'https://youtube.com/watch?v=$videoId',
-            category: query,
-            popularityScore: 0.4,
-          ));
+          results.add(
+            Content(
+              id: 'youtube_$videoId',
+              title: snippet['title'] as String? ?? '',
+              description: snippet['description'] as String? ?? '',
+              thumbnail: thumbnail,
+              source: 'youtube',
+              contentType: isShort ? 'short' : 'video',
+              url: 'https://youtube.com/watch?v=$videoId',
+              category: query,
+              popularityScore: 0.35 + log(likes + 1) / (10 * log(views + 1)),
+            ),
+          );
         }
 
         _cache[query] = results;

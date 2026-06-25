@@ -11,26 +11,47 @@ class DevToService {
       return _cache[query]!;
     }
     // Try tag-based search first, then fallback to general articles if tag fails
+    final tags = query
+        .toLowerCase()
+        .split(RegExp(r'\s+'))
+        .where((e) => e.isNotEmpty)
+        .take(2)
+        .join(',');
+
     final tagUrl = Uri.parse(
-      'https://dev.to/api/articles?search=${Uri.encodeComponent(query)}&per_page=10&page=1',
+      'https://dev.to/api/articles'
+      '?tag=$tags'
+      '&top=30'
+      '&per_page=10',
     );
-    
+
     final generalUrl = Uri.parse(
-      'https://dev.to/api/articles?per_page=10&page=1',
+      'https://dev.to/api/articles'
+      '?search=${Uri.encodeComponent(query.split(' ').first)}'
+      '&per_page=20',
     );
 
     try {
-      var response = await http.get(tagUrl).timeout(
-        const Duration(seconds: 10),
-        onTimeout: () => http.Response('timeout', 408),
-      );
+      var response = await http
+          .get(tagUrl)
+          .timeout(
+            const Duration(seconds: 10),
+            onTimeout: () => http.Response('timeout', 408),
+          );
 
       // If tag search fails, try general articles as fallback
-      if (response.statusCode != 200) {
-        response = await http.get(generalUrl).timeout(
-          const Duration(seconds: 10),
-          onTimeout: () => http.Response('timeout', 408),
-        );
+      final decode = json.decode(response.body);
+      final empty = decode is List
+          ? decode.isEmpty
+          : (decode['result'] as List?)?.isEmpty ?? true;
+
+      if (response.statusCode != 200 || empty) {
+        response = await http
+            .get(generalUrl)
+            .timeout(
+              const Duration(seconds: 10),
+              onTimeout: () => http.Response('timeout', 408),
+            );
       }
 
       if (response.statusCode != 200) {
@@ -39,7 +60,12 @@ class DevToService {
         );
       }
 
-      final List<dynamic> data = json.decode(response.body) as List<dynamic>;
+      final decoded = json.decode(response.body);
+
+      final List<dynamic> data = decoded is List
+          ? decoded
+          : (decoded['result'] as List<dynamic>? ?? []);
+
       final results = data.map((item) {
         final Map<String, dynamic> article = item as Map<String, dynamic>;
         final int reactions = article['positive_reactions_count'] as int? ?? 0;
