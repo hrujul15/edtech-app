@@ -5,6 +5,8 @@ import 'package:edtech_app/models/content_model.dart';
 import 'package:edtech_app/services/auth_service.dart';
 import 'package:edtech_app/services/firestore_service.dart';
 import 'package:edtech_app/widgets/content_card.dart';
+import 'package:edtech_app/screens/detail/article_detail_screen.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 class SavedScreen extends StatefulWidget {
   const SavedScreen({super.key});
@@ -122,6 +124,39 @@ class _SavedScreenState extends State<SavedScreen> {
     );
   }
 
+  Future<void> _openContent(Content content) async {
+    if (content.source == 'youtube') {
+      final videoId = content.id.replaceFirst('youtube_', '');
+      final appUri = Uri.parse('vnd.youtube://$videoId');
+      final webUri = Uri.parse(content.url);
+
+      if (await canLaunchUrl(appUri)) {
+        await launchUrl(appUri, mode: LaunchMode.externalApplication);
+        return;
+      }
+
+      if (await canLaunchUrl(webUri)) {
+        await launchUrl(webUri, mode: LaunchMode.externalApplication);
+        return;
+      }
+
+      if (mounted) {
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(const SnackBar(content: Text('Could not open video.')));
+      }
+      return;
+    }
+
+    if (mounted) {
+      Navigator.of(context).push(
+        MaterialPageRoute(
+          builder: (_) => ArticleDetailScreen(content: content),
+        ),
+      );
+    }
+  }
+
   @override
   void dispose() {
     _savedItemsSub?.cancel();
@@ -188,6 +223,7 @@ class _SavedScreenState extends State<SavedScreen> {
                         content: content,
                         isSaved: true,
                         onSave: () => _deleteSavedItem(content),
+                        onTap: () => _openContent(content),
                       ),
                     ),
                   );

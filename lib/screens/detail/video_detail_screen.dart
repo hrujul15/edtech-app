@@ -1,6 +1,5 @@
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
-import 'package:youtube_player_flutter/youtube_player_flutter.dart';
 import 'package:edtech_app/models/content_model.dart';
 import 'package:edtech_app/services/firestore_service.dart';
 
@@ -14,23 +13,12 @@ class VideoDetailScreen extends StatefulWidget {
 }
 
 class _VideoDetailScreenState extends State<VideoDetailScreen> {
-  late final YoutubePlayerController _controller;
   final FirestoreService _firestoreService = FirestoreService();
   bool _isSaving = false;
 
   @override
   void initState() {
     super.initState();
-    final url = Uri.tryParse(widget.content.url);
-    final videoId =
-        url?.queryParameters['v'] ??
-        YoutubePlayer.convertUrlToId(widget.content.url) ??
-        '';
-
-    _controller = YoutubePlayerController(
-      initialVideoId: videoId,
-      flags: const YoutubePlayerFlags(autoPlay: false, mute: false),
-    );
   }
 
   Future<void> _saveContent() async {
@@ -71,7 +59,6 @@ class _VideoDetailScreenState extends State<VideoDetailScreen> {
 
   @override
   void dispose() {
-    _controller.dispose();
     super.dispose();
   }
 
@@ -97,11 +84,6 @@ class _VideoDetailScreenState extends State<VideoDetailScreen> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            YoutubePlayer(
-              controller: _controller,
-              showVideoProgressIndicator: true,
-              progressIndicatorColor: Theme.of(context).colorScheme.secondary,
-            ),
             Padding(
               padding: const EdgeInsets.all(16.0),
               child: Column(

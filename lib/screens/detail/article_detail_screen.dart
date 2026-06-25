@@ -1,6 +1,7 @@
+import 'dart:async';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
-import 'package:url_launcher/url_launcher.dart';
+import 'package:webview_flutter/webview_flutter.dart';
 import 'package:edtech_app/models/content_model.dart';
 import 'package:edtech_app/services/firestore_service.dart';
 
@@ -15,7 +16,47 @@ class ArticleDetailScreen extends StatefulWidget {
 
 class _ArticleDetailScreenState extends State<ArticleDetailScreen> {
   final FirestoreService _firestoreService = FirestoreService();
+  late final WebViewController _webViewController;
   bool _isSaving = false;
+  bool _isLoading = true;
+  Timer? _loadingTimer;
+
+  void _stopLoading() {
+    if (mounted && _isLoading) {
+      setState(() => _isLoading = false);
+    }
+    _loadingTimer?.cancel();
+  }
+
+  @override
+  void initState() {
+    super.initState();
+
+    // Fallback: hide spinner after 8 seconds regardless of callbacks
+    _loadingTimer = Timer(const Duration(seconds: 8), _stopLoading);
+
+    _webViewController = WebViewController()
+      ..setJavaScriptMode(JavaScriptMode.unrestricted)
+      ..setNavigationDelegate(
+        NavigationDelegate(
+          onPageStarted: (_) {
+            _loadingTimer?.cancel();
+            // Restart fallback timer on each new page load
+            _loadingTimer = Timer(const Duration(seconds: 8), _stopLoading);
+            if (mounted) setState(() => _isLoading = true);
+          },
+          onPageFinished: (_) => _stopLoading(),
+          onWebResourceError: (_) => _stopLoading(),
+        ),
+      )
+      ..loadRequest(Uri.parse(widget.content.url));
+  }
+
+  @override
+  void dispose() {
+    _loadingTimer?.cancel();
+    super.dispose();
+  }
 
   Future<void> _saveContent() async {
     final uid = FirebaseAuth.instance.currentUser?.uid;
@@ -53,28 +94,15 @@ class _ArticleDetailScreenState extends State<ArticleDetailScreen> {
     }
   }
 
-  Future<void> _openArticle() async {
-    final uri = Uri.tryParse(widget.content.url);
-    if (uri == null) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Invalid URL for this article.')),
-      );
-      return;
-    }
-
-    if (!await launchUrl(uri, mode: LaunchMode.externalApplication)) {
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Could not open article URL.')),
-      );
-    }
-  }
-
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Article Detail'),
+        title: Text(
+          widget.content.title,
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+        ),
         actions: [
           IconButton(
             icon: _isSaving
@@ -88,49 +116,12 @@ class _ArticleDetailScreenState extends State<ArticleDetailScreen> {
           ),
         ],
       ),
-      body: SingleChildScrollView(
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            if (widget.content.thumbnail.isNotEmpty)
-              Image.network(
-                widget.content.thumbnail,
-                width: double.infinity,
-                height: 240,
-                fit: BoxFit.cover,
-                errorBuilder: (context, error, stackTrace) =>
-                    Container(height: 240, color: Colors.grey[200]),
-              ),
-            Padding(
-              padding: const EdgeInsets.all(16.0),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    widget.content.title,
-                    style: Theme.of(context).textTheme.headlineSmall,
-                  ),
-                  const SizedBox(height: 12),
-                  Text(
-                    widget.content.description,
-                    style: Theme.of(context).textTheme.bodyLarge,
-                  ),
-                  const SizedBox(height: 24),
-                  SizedBox(
-                    width: double.infinity,
-                    child: ElevatedButton(
-                      onPressed: _openArticle,
-                      child: const Padding(
-                        padding: EdgeInsets.symmetric(vertical: 16.0),
-                        child: Text('Read Article'),
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ],
-        ),
+      body: Stack(
+        children: [
+          WebViewWidget(controller: _webViewController),
+          if (_isLoading)
+            const Center(child: CircularProgressIndicator()),
+        ],
       ),
     );
   }
