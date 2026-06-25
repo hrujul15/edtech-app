@@ -7,8 +7,7 @@ import 'package:edtech_app/services/firestore_service.dart';
 class ArticleDetailScreen extends StatefulWidget {
   final Content content;
 
-  const ArticleDetailScreen({Key? key, required this.content})
-    : super(key: key);
+  const ArticleDetailScreen({super.key, required this.content});
 
   @override
   State<ArticleDetailScreen> createState() => _ArticleDetailScreenState();
@@ -64,6 +63,7 @@ class _ArticleDetailScreenState extends State<ArticleDetailScreen> {
     }
 
     if (!await launchUrl(uri, mode: LaunchMode.externalApplication)) {
+      if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Could not open article URL.')),
       );

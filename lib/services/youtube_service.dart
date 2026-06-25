@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'package:flutter/foundation.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:http/http.dart' as http;
 import '../models/content_model.dart';
@@ -7,9 +8,16 @@ class YouTubeService {
   // Key is loaded from the .env file at runtime 
   String get _apiKey => dotenv.env['YOUTUBE_API_KEY'] ?? '';
 
+  // Simple memory cache to save API quota during development
+  final Map<String, List<Content>> _cache = {};
+
   Future<List<Content>> searchYouTube(String query) async {
+    if (_cache.containsKey(query)) {
+      return _cache[query]!;
+    }
+
     if (_apiKey.isEmpty || _apiKey == 'YOUR_YOUTUBE_API_KEY_HERE') {
-      print('Warning: YOUTUBE_API_KEY is not set in your .env file.');
+      debugPrint('Warning: YOUTUBE_API_KEY is not set in your .env file.');
       return [];
     }
 
@@ -29,7 +37,7 @@ class YouTubeService {
         final Map<String, dynamic> data = json.decode(response.body);
         final List<dynamic> items = data['items'] ?? [];
 
-        return items.map((item) {
+        final results = items.map((item) {
           final snippet = item['snippet'] ?? {};
           final videoId = item['id']['videoId'] as String? ?? '';
           final thumbnails = snippet['thumbnails'] ?? {};
@@ -51,13 +59,16 @@ class YouTubeService {
             popularityScore: 0.5,
           );
         }).toList();
+
+        _cache[query] = results;
+        return results;
       } else {
         throw Exception(
           'YouTube API error ${response.statusCode}: ${response.body}',
         );
       }
     } catch (e) {
-      print('YouTube search error: $e');
+      debugPrint('YouTube search error: $e');
       return [];
     }
   }

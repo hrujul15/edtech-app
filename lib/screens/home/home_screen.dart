@@ -1,6 +1,5 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
-import 'package:firebase_auth/firebase_auth.dart';
 import 'package:edtech_app/models/content_model.dart';
 import 'package:edtech_app/models/user_model.dart';
 import 'package:edtech_app/services/auth_service.dart';
@@ -13,7 +12,7 @@ import 'package:edtech_app/screens/search/search_screen.dart';
 import 'package:edtech_app/screens/saved/saved_screen.dart';
 
 class HomeScreen extends StatefulWidget {
-  const HomeScreen({Key? key}) : super(key: key);
+  const HomeScreen({super.key});
 
   @override
   State<HomeScreen> createState() => _HomeScreenState();

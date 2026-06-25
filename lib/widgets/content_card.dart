@@ -8,11 +8,11 @@ class ContentCard extends StatelessWidget {
   final VoidCallback onSave;
 
   const ContentCard({
-    Key? key,
+    super.key,
     required this.content,
     this.isSaved = false,
     required this.onSave,
-  }) : super(key: key);
+  });
 
   @override
   Widget build(BuildContext context) {

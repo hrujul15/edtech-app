@@ -5,7 +5,7 @@ import 'package:edtech_app/services/firestore_service.dart';
 import 'package:edtech_app/widgets/content_card.dart';
 
 class SavedScreen extends StatefulWidget {
-  const SavedScreen({Key? key}) : super(key: key);
+  const SavedScreen({super.key});
 
   @override
   State<SavedScreen> createState() => _SavedScreenState();

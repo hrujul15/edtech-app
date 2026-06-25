@@ -4,7 +4,7 @@ import 'package:edtech_app/services/auth_service.dart';
 import 'package:edtech_app/screens/auth/login_screen.dart';
 
 class SignupScreen extends StatefulWidget {
-  const SignupScreen({Key? key}) : super(key: key);
+  const SignupScreen({super.key});
 
   @override
   State<SignupScreen> createState() => _SignupScreenState();
@@ -65,12 +65,12 @@ class _SignupScreenState extends State<SignupScreen> {
         });
       }
     } catch (e) {
+      debugPrint('Signup error: $e');
       if (mounted) {
         setState(() {
           _errorMessage = e.toString();
         });
       }
-      print('Signup error: $e');
     } finally {
       if (mounted) {
         setState(() {

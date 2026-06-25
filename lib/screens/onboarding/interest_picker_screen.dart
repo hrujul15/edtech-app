@@ -3,7 +3,7 @@ import 'package:edtech_app/services/auth_service.dart';
 import 'package:edtech_app/services/firestore_service.dart';
 
 class InterestPickerScreen extends StatefulWidget {
-  const InterestPickerScreen({Key? key}) : super(key: key);
+  const InterestPickerScreen({super.key});
 
   @override
   State<InterestPickerScreen> createState() => _InterestPickerScreenState();

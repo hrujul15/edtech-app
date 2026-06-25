@@ -7,7 +7,7 @@ import 'package:edtech_app/services/firestore_service.dart';
 class VideoDetailScreen extends StatefulWidget {
   final Content content;
 
-  const VideoDetailScreen({Key? key, required this.content}) : super(key: key);
+  const VideoDetailScreen({super.key, required this.content});
 
   @override
   State<VideoDetailScreen> createState() => _VideoDetailScreenState();

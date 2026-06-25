@@ -1,9 +1,15 @@
 import 'dart:convert';
+import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 import '../models/content_model.dart';
 
 class DevToService {
+  final Map<String, List<Content>> _cache = {};
+
   Future<List<Content>> searchDevTo(String query) async {
+    if (_cache.containsKey(query)) {
+      return _cache[query]!;
+    }
     final url = Uri.parse(
       'https://dev.to/api/articles?tag=${Uri.encodeComponent(query)}',
     );
@@ -18,7 +24,7 @@ class DevToService {
       }
 
       final List<dynamic> data = json.decode(response.body) as List<dynamic>;
-      return data.map((item) {
+      final results = data.map((item) {
         final Map<String, dynamic> article = item as Map<String, dynamic>;
         final int reactions = article['positive_reactions_count'] as int? ?? 0;
         final double popularityScore = (reactions / 1000).clamp(0.0, 1.0);
@@ -35,8 +41,11 @@ class DevToService {
           popularityScore: popularityScore,
         );
       }).toList();
+
+      _cache[query] = results;
+      return results;
     } catch (e) {
-      print('Dev.to search error: $e');
+      debugPrint('Dev.to search error: $e');
       return [];
     }
   }
