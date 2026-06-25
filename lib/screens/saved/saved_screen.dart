@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:edtech_app/models/content_model.dart';
 import 'package:edtech_app/services/auth_service.dart';
@@ -15,6 +17,7 @@ class _SavedScreenState extends State<SavedScreen> {
   final AuthService _authService = AuthService();
   final FirestoreService _firestoreService = FirestoreService();
 
+  StreamSubscription<List<Content>>? _savedItemsSub;
   bool _isLoading = true;
   List<Content> _savedItems = [];
 
@@ -22,6 +25,7 @@ class _SavedScreenState extends State<SavedScreen> {
   void initState() {
     super.initState();
     _loadSavedContent();
+    _listenToSavedContent();
   }
 
   /// Fetch all saved content for the current user from Firestore
@@ -47,6 +51,28 @@ class _SavedScreenState extends State<SavedScreen> {
     }
   }
 
+  void _listenToSavedContent() {
+    final uid = _authService.currentUid;
+    if (uid == null) return;
+
+    _savedItemsSub?.cancel();
+    _savedItemsSub = _firestoreService
+        .getSavedContentStream(uid)
+        .listen(
+          (items) {
+            if (mounted) {
+              setState(() {
+                _savedItems = items;
+                _isLoading = false;
+              });
+            }
+          },
+          onError: (error) {
+            debugPrint('Error listening to saved content: $error');
+          },
+        );
+  }
+
   /// Delete a saved item via swipe or long-press
   Future<void> _deleteSavedItem(Content content) async {
     final uid = _authService.currentUid;
@@ -58,16 +84,16 @@ class _SavedScreenState extends State<SavedScreen> {
         setState(() {
           _savedItems.removeWhere((item) => item.id == content.id);
         });
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Removed "${content.title}"')),
-        );
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text('Removed "${content.title}"')));
       }
     } catch (e) {
       debugPrint('Error deleting saved content: $e');
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Failed to delete item')),
-        );
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(const SnackBar(content: Text('Failed to delete item')));
       }
     }
   }
@@ -97,32 +123,52 @@ class _SavedScreenState extends State<SavedScreen> {
   }
 
   @override
+  void dispose() {
+    _savedItemsSub?.cancel();
+    super.dispose();
+  }
+
+  @override
   Widget build(BuildContext context) {
     if (_isLoading) {
-      return const Scaffold(
-        body: Center(child: CircularProgressIndicator()),
-      );
+      return const Scaffold(body: Center(child: CircularProgressIndicator()));
     }
 
     return Scaffold(
       appBar: AppBar(title: const Text('Saved')),
-      body: _savedItems.isEmpty
-          ? const Center(
-              child: Column(
-                mainAxisAlignment: MainAxisAlignment.center,
+      body: RefreshIndicator(
+        onRefresh: _loadSavedContent,
+        child: _savedItems.isEmpty
+            ? ListView(
+                physics: const AlwaysScrollableScrollPhysics(),
                 children: [
-                  Icon(Icons.bookmark_border, size: 64, color: Colors.grey),
-                  SizedBox(height: 16),
-                  Text(
-                    'No saved content yet.',
-                    style: TextStyle(fontSize: 16, color: Colors.grey),
+                  SizedBox(
+                    height:
+                        MediaQuery.of(context).size.height -
+                        kToolbarHeight -
+                        MediaQuery.of(context).padding.top,
+                    child: const Center(
+                      child: Column(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          Icon(
+                            Icons.bookmark_border,
+                            size: 64,
+                            color: Colors.grey,
+                          ),
+                          SizedBox(height: 16),
+                          Text(
+                            'No saved content yet.',
+                            style: TextStyle(fontSize: 16, color: Colors.grey),
+                          ),
+                        ],
+                      ),
+                    ),
                   ),
                 ],
-              ),
-            )
-          : RefreshIndicator(
-              onRefresh: _loadSavedContent,
-              child: ListView.builder(
+              )
+            : ListView.builder(
+                physics: const AlwaysScrollableScrollPhysics(),
                 itemCount: _savedItems.length,
                 itemBuilder: (context, index) {
                   final content = _savedItems[index];
@@ -147,7 +193,7 @@ class _SavedScreenState extends State<SavedScreen> {
                   );
                 },
               ),
-            ),
+      ),
     );
   }
 }

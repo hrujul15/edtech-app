@@ -44,7 +44,7 @@ class FirestoreService {
         .toList();
   }
 
-  /// Get a real-time stream of a user's saved content IDs
+  /// Get a real-time stream of a user's saved content IDs to check availability
   Stream<Set<String>> getSavedContentIdsStream(String uid) {
     return _firestore
         .collection('users')
@@ -52,6 +52,18 @@ class FirestoreService {
         .collection('savedContent')
         .snapshots()
         .map((snapshot) => snapshot.docs.map((doc) => doc.id).toSet());
+  }
+
+  /// Get a real-time stream of a user's saved content list [loads actual content]
+  Stream<List<Content>> getSavedContentStream(String uid) {
+    return _firestore
+        .collection('users')
+        .doc(uid)
+        .collection('savedContent')
+        .snapshots()
+        .map((snapshot) => snapshot.docs
+            .map((doc) => Content.fromJson(doc.data()))
+            .toList());
   }
 
   /// Delete saved content from a user's collection

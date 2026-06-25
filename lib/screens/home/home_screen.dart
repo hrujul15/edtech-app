@@ -247,7 +247,7 @@ class _HomeScreenState extends State<HomeScreen> {
           ),
         ),
         SizedBox(
-          height: 280,
+          height: 380,
           child: section.items.isEmpty
               ? const Center(child: Text('No content found'))
               : ListView.builder(
