@@ -8,6 +8,7 @@ import 'screens/auth/signup_screen.dart';
 import 'screens/home/home_screen.dart';
 import 'screens/onboarding/interest_picker_screen.dart';
 import 'screens/search/search_screen.dart';
+import 'screens/saved/saved_screen.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -22,15 +23,22 @@ class MyApp extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    // Check if user is already logged in
+    final currentUser = FirebaseAuth.instance.currentUser;
+    final Widget initialScreen =
+        currentUser != null ? const HomeScreen() : const LoginScreen();
+
     return MaterialApp(
       title: 'EdTech App',
       debugShowCheckedModeBanner: false,
-      home: const SearchScreen(),
+      home: initialScreen,
       routes: {
         '/home': (context) => const HomeScreen(),
         '/login': (context) => const LoginScreen(),
         '/signup': (context) => const SignupScreen(),
         '/onboarding': (context) => const InterestPickerScreen(),
+        '/search': (context) => const SearchScreen(),
+        '/saved': (context) => const SavedScreen(),
       },
     );
   }
