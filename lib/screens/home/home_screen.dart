@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:edtech_app/models/content_model.dart';
@@ -32,6 +33,9 @@ class _HomeScreenState extends State<HomeScreen> {
 
   /// Top 2 categories mapped to their fetched content
   List<_CategorySection> _categorySections = [];
+
+  StreamSubscription<Set<String>>? _savedItemsSub;
+  Set<String> _savedItemIds = {};
 
   @override
   void initState() {
@@ -83,6 +87,16 @@ class _HomeScreenState extends State<HomeScreen> {
           _isLoading = false;
         });
       }
+
+      // Start listening to saved items
+      _savedItemsSub?.cancel();
+      _savedItemsSub = _firestoreService.getSavedContentIdsStream(uid).listen((ids) {
+        if (mounted) {
+          setState(() {
+            _savedItemIds = ids;
+          });
+        }
+      });
     } catch (e) {
       debugPrint('Error loading home data: $e');
       if (mounted) {
@@ -112,10 +126,17 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   void _handleLogout() async {
+    _savedItemsSub?.cancel();
     await _authService.signOut();
     if (mounted) {
       Navigator.of(context).pushReplacementNamed('/login');
     }
+  }
+
+  @override
+  void dispose() {
+    _savedItemsSub?.cancel();
+    super.dispose();
   }
 
   // ──────────────────────────────────────
@@ -236,11 +257,13 @@ class _HomeScreenState extends State<HomeScreen> {
                   itemCount: section.items.length,
                   itemBuilder: (context, index) {
                     final content = section.items[index];
+                    final isSaved = _savedItemIds.contains(content.id);
                     return SizedBox(
                       width: 280,
                       child: ContentCard(
                         content: content,
-                        onSave: () => _saveContent(content),
+                        isSaved: isSaved,
+                        onSave: () => _toggleSaveContent(content, isSaved),
                       ),
                     );
                   },
@@ -250,20 +273,29 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
-  /// Save content to Firestore
-  Future<void> _saveContent(Content content) async {
+  /// Toggle save content to Firestore
+  Future<void> _toggleSaveContent(Content content, bool isSaved) async {
     final uid = _authService.currentUid;
     if (uid == null) return;
 
     try {
-      await _firestoreService.saveContent(uid, content);
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Saved "${content.title}"')),
-        );
+      if (isSaved) {
+        await _firestoreService.deleteSavedContent(uid, content.id);
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text('Removed "${content.title}"')),
+          );
+        }
+      } else {
+        await _firestoreService.saveContent(uid, content);
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text('Saved "${content.title}"')),
+          );
+        }
       }
     } catch (e) {
-      debugPrint('Error saving content: $e');
+      debugPrint('Error toggling content: $e');
     }
   }
 

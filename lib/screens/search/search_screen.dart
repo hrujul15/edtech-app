@@ -1,9 +1,12 @@
+import 'dart:async';
 import 'package:edtech_app/models/content_model.dart';
 import 'package:flutter/material.dart';
 import 'package:edtech_app/services/devto_service.dart';
 import 'package:edtech_app/services/ranking_service.dart';
 import 'package:edtech_app/services/youtube_service.dart';
 import 'package:edtech_app/widgets/content_card.dart';
+import 'package:edtech_app/services/auth_service.dart';
+import 'package:edtech_app/services/firestore_service.dart';
 
 class SearchScreen extends StatefulWidget {
   const SearchScreen({Key? key}) : super(key: key);
@@ -21,6 +24,54 @@ class _SearchScreenState extends State<SearchScreen> {
   bool _isLoading = false;
   List<Content> _results = [];
   String _lastQuery = '';
+  
+  StreamSubscription<Set<String>>? _savedItemsSub;
+  Set<String> _savedItemIds = {};
+
+  @override
+  void initState() {
+    super.initState();
+    _listenToSavedItems();
+  }
+
+  void _listenToSavedItems() {
+    final uid = AuthService().currentUid;
+    if (uid != null) {
+      _savedItemsSub = FirestoreService().getSavedContentIdsStream(uid).listen((ids) {
+        if (mounted) {
+          setState(() {
+            _savedItemIds = ids;
+          });
+        }
+      });
+    }
+  }
+
+  /// Toggle save content to Firestore
+  Future<void> _toggleSaveContent(Content content, bool isSaved) async {
+    final uid = AuthService().currentUid;
+    if (uid == null) return;
+
+    try {
+      if (isSaved) {
+        await FirestoreService().deleteSavedContent(uid, content.id);
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text('Removed "${content.title}"')),
+          );
+        }
+      } else {
+        await FirestoreService().saveContent(uid, content);
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text('Saved "${content.title}"')),
+          );
+        }
+      }
+    } catch (e) {
+      debugPrint('Error toggling content: $e');
+    }
+  }
 
   Future<void> _search(String query) async {
     final trimmed = query.trim();
@@ -61,6 +112,7 @@ class _SearchScreenState extends State<SearchScreen> {
   @override
   void dispose() {
     _searchController.dispose();
+    _savedItemsSub?.cancel();
     super.dispose();
   }
 
@@ -115,7 +167,12 @@ class _SearchScreenState extends State<SearchScreen> {
                   itemCount: _results.length,
                   itemBuilder: (context, index) {
                     final content = _results[index];
-                    return ContentCard(content: content, onSave: () {});
+                    final isSaved = _savedItemIds.contains(content.id);
+                    return ContentCard(
+                      content: content, 
+                      isSaved: isSaved,
+                      onSave: () => _toggleSaveContent(content, isSaved),
+                    );
                   },
                 ),
               ),

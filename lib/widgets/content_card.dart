@@ -4,11 +4,13 @@ import 'package:edtech_app/models/content_model.dart';
 
 class ContentCard extends StatelessWidget {
   final Content content;
+  final bool isSaved;
   final VoidCallback onSave;
 
   const ContentCard({
     Key? key,
     required this.content,
+    this.isSaved = false,
     required this.onSave,
   }) : super(key: key);
 
@@ -64,7 +66,8 @@ class ContentCard extends StatelessWidget {
                     ),
                     // Bookmark Button
                     IconButton(
-                      icon: const Icon(Icons.bookmark_border),
+                      icon: Icon(isSaved ? Icons.bookmark : Icons.bookmark_border),
+                      color: isSaved ? Colors.blue : null,
                       onPressed: onSave,
                       constraints: const BoxConstraints(),
                       padding: EdgeInsets.zero,

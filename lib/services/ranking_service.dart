@@ -7,10 +7,30 @@ class RankingService {
     List<Content> items,
     String query,
     Map<String, double> userCategoryScores,
-  ) {
+    // Map common abbreviations to full terms
+    final Map<String, String> commonAbbreviations = {
+      'dsa': 'data structure algorithm',
+      'ml': 'machine learning',
+      'ai': 'artificial intelligence',
+      'ui': 'user interface',
+      'ux': 'user experience',
+      'db': 'database',
+      'js': 'javascript',
+      'ts': 'typescript',
+      'html': 'hyper text markup language',
+      'css': 'cascading style sheets',
+      'api': 'application programming interface',
+    };
+
+    String normalizedQuery = query.toLowerCase();
+    
+    // Replace whole words that are abbreviations
+    commonAbbreviations.forEach((abbr, fullTerm) {
+      normalizedQuery = normalizedQuery.replaceAll(RegExp('\\b$abbr\\b'), fullTerm);
+    });
+
     // Split query into lowercase search terms/tokens
-    final List<String> queryTokens = query
-        .toLowerCase()
+    final List<String> queryTokens = normalizedQuery
         .split(RegExp(r'\s+'))
         .where((token) => token.trim().isNotEmpty)
         .toList();

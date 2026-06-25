@@ -140,7 +140,8 @@ class _SavedScreenState extends State<SavedScreen> {
                       onLongPress: () => _onLongPress(content),
                       child: ContentCard(
                         content: content,
-                        onSave: () {}, // Already saved — no-op
+                        isSaved: true,
+                        onSave: () => _deleteSavedItem(content),
                       ),
                     ),
                   );

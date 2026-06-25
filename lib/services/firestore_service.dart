@@ -44,6 +44,16 @@ class FirestoreService {
         .toList();
   }
 
+  /// Get a real-time stream of a user's saved content IDs
+  Stream<Set<String>> getSavedContentIdsStream(String uid) {
+    return _firestore
+        .collection('users')
+        .doc(uid)
+        .collection('savedContent')
+        .snapshots()
+        .map((snapshot) => snapshot.docs.map((doc) => doc.id).toSet());
+  }
+
   /// Delete saved content from a user's collection
   Future<void> deleteSavedContent(String uid, String contentId) async {
     await _firestore
