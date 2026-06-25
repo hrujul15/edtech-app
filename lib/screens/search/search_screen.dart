@@ -93,7 +93,6 @@ class _SearchScreenState extends State<SearchScreen> {
 
       final combined = [...responses[0], ...responses[1]];
       final ranked = _rankingService.rankContent(combined, trimmed, {});
-
       setState(() {
         _results = ranked;
       });

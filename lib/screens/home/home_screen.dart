@@ -32,6 +32,8 @@ class _HomeScreenState extends State<HomeScreen> {
 
   /// Top 2 categories mapped to their fetched content
   List<_CategorySection> _categorySections = [];
+  // Keep the raw, unranked items for each category so we can re-rank locally
+  final Map<String, List<Content>> _rawCategoryItems = {};
 
   StreamSubscription<Set<String>>? _savedItemsSub;
   Set<String> _savedItemIds = {};
@@ -71,6 +73,8 @@ class _HomeScreenState extends State<HomeScreen> {
           _devtoService.searchDevTo(category),
         ]);
         final combined = [...results[0], ...results[1]];
+        // store raw combined items so we can re-rank locally later
+        _rawCategoryItems[category] = combined;
         final ranked = _rankingService.rankContent(
           combined,
           category,
@@ -89,7 +93,9 @@ class _HomeScreenState extends State<HomeScreen> {
 
       // Start listening to saved items
       _savedItemsSub?.cancel();
-      _savedItemsSub = _firestoreService.getSavedContentIdsStream(uid).listen((ids) {
+      _savedItemsSub = _firestoreService.getSavedContentIdsStream(uid).listen((
+        ids,
+      ) {
         if (mounted) {
           setState(() {
             _savedItemIds = ids;
@@ -129,6 +135,29 @@ class _HomeScreenState extends State<HomeScreen> {
     await _authService.signOut();
     if (mounted) {
       Navigator.of(context).pushReplacementNamed('/login');
+    }
+  }
+
+  /// Re-rank existing fetched items locally without refetching
+  void _reRankHomeSections() {
+    if (_rawCategoryItems.isEmpty) return;
+
+    final sections = <_CategorySection>[];
+    for (final entry in _rawCategoryItems.entries) {
+      final category = entry.key;
+      final rawItems = entry.value;
+      final ranked = _rankingService.rankContent(
+        rawItems,
+        category,
+        _userModel?.categoryScores ?? {},
+      );
+      sections.add(_CategorySection(category: category, items: ranked));
+    }
+
+    if (mounted) {
+      setState(() {
+        _categorySections = sections;
+      });
     }
   }
 
@@ -233,6 +262,12 @@ class _HomeScreenState extends State<HomeScreen> {
 
   /// Build a horizontal scrollable section for one category
   Widget _buildCategorySection(_CategorySection section) {
+    // Re-apply ranking here to ensure filters (shorts, language) and boosts are applied
+    final rankedItems = _rankingService.rankContent(
+      section.items,
+      section.category,
+      _userModel?.categoryScores ?? {},
+    );
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -240,22 +275,19 @@ class _HomeScreenState extends State<HomeScreen> {
           padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
           child: Text(
             'Because you like ${section.category}',
-            style: const TextStyle(
-              fontSize: 18,
-              fontWeight: FontWeight.bold,
-            ),
+            style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
           ),
         ),
         SizedBox(
           height: 380,
-          child: section.items.isEmpty
+          child: rankedItems.isEmpty
               ? const Center(child: Text('No content found'))
               : ListView.builder(
                   scrollDirection: Axis.horizontal,
                   padding: const EdgeInsets.symmetric(horizontal: 8),
-                  itemCount: section.items.length,
+                  itemCount: rankedItems.length,
                   itemBuilder: (context, index) {
-                    final content = section.items[index];
+                    final content = rankedItems[index];
                     final isSaved = _savedItemIds.contains(content.id);
                     return SizedBox(
                       width: 280,
@@ -281,16 +313,16 @@ class _HomeScreenState extends State<HomeScreen> {
       if (isSaved) {
         await _firestoreService.deleteSavedContent(uid, content.id);
         if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(content: Text('Removed "${content.title}"')),
-          );
+          ScaffoldMessenger.of(
+            context,
+          ).showSnackBar(SnackBar(content: Text('Removed "${content.title}"')));
         }
       } else {
         await _firestoreService.saveContent(uid, content);
         if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(content: Text('Saved "${content.title}"')),
-          );
+          ScaffoldMessenger.of(
+            context,
+          ).showSnackBar(SnackBar(content: Text('Saved "${content.title}"')));
         }
       }
     } catch (e) {
@@ -308,26 +340,20 @@ class _HomeScreenState extends State<HomeScreen> {
     ];
 
     return Scaffold(
-      body: IndexedStack(
-        index: _currentIndex,
-        children: pages,
-      ),
+      body: IndexedStack(index: _currentIndex, children: pages),
       bottomNavigationBar: BottomNavigationBar(
         currentIndex: _currentIndex,
-        onTap: (index) => setState(() => _currentIndex = index),
+        onTap: (index) {
+          setState(() => _currentIndex = index);
+          if (index == 0) {
+            // Re-rank existing items locally instead of re-fetching from APIs
+            _reRankHomeSections();
+          }
+        },
         items: const [
-          BottomNavigationBarItem(
-            icon: Icon(Icons.home),
-            label: 'Home',
-          ),
-          BottomNavigationBarItem(
-            icon: Icon(Icons.search),
-            label: 'Search',
-          ),
-          BottomNavigationBarItem(
-            icon: Icon(Icons.bookmark),
-            label: 'Saved',
-          ),
+          BottomNavigationBarItem(icon: Icon(Icons.home), label: 'Home'),
+          BottomNavigationBarItem(icon: Icon(Icons.search), label: 'Search'),
+          BottomNavigationBarItem(icon: Icon(Icons.bookmark), label: 'Saved'),
         ],
       ),
     );

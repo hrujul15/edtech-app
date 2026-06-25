@@ -5,7 +5,7 @@ import 'package:http/http.dart' as http;
 import '../models/content_model.dart';
 
 class YouTubeService {
-  // Key is loaded from the .env file at runtime 
+  // Key is loaded from the .env file at runtime
   String get _apiKey => dotenv.env['YOUTUBE_API_KEY'] ?? '';
 
   // Simple memory cache to save API quota during development
@@ -37,28 +37,63 @@ class YouTubeService {
         final Map<String, dynamic> data = json.decode(response.body);
         final List<dynamic> items = data['items'] ?? [];
 
-        final results = items.map((item) {
+        final videoIds = <String>[];
+        final snippets = <String, Map<String, dynamic>>{};
+
+        for (final item in items) {
           final snippet = item['snippet'] ?? {};
-          final videoId = item['id']['videoId'] as String? ?? '';
+          final videoId = item['id']?['videoId'] as String? ?? '';
+          if (videoId.isNotEmpty) {
+            videoIds.add(videoId);
+            snippets[videoId] = snippet as Map<String, dynamic>;
+          }
+        }
+
+        final Map<String, int> durationsSec = {};
+        if (videoIds.isNotEmpty) {
+          final idsParam = videoIds.join(',');
+          final detailsUrl = Uri.parse(
+            'https://www.googleapis.com/youtube/v3/videos?part=contentDetails&id=$idsParam&key=$_apiKey',
+          );
+
+          final detailsResponse = await http.get(detailsUrl);
+          if (detailsResponse.statusCode == 200) {
+            final Map<String, dynamic> detailsData = json.decode(detailsResponse.body);
+            final List<dynamic> detailsItems = detailsData['items'] ?? [];
+            for (final detailsItem in detailsItems) {
+              final id = detailsItem['id'] as String? ?? '';
+              final durationIso = detailsItem['contentDetails']?['duration'] as String? ?? '';
+              if (id.isNotEmpty && durationIso.isNotEmpty) {
+                durationsSec[id] = _parseIsoDurationToSeconds(durationIso);
+              }
+            }
+          }
+        }
+
+        final results = <Content>[];
+        for (final videoId in videoIds) {
+          final snippet = snippets[videoId] ?? {};
           final thumbnails = snippet['thumbnails'] ?? {};
           final thumbnail =
               thumbnails['high']?['url'] ??
               thumbnails['medium']?['url'] ??
               thumbnails['default']?['url'] ??
               '';
+          final duration = durationsSec[videoId] ?? 0;
+          final bool isShort = duration > 0 && duration < 60;
 
-          return Content(
+          results.add(Content(
             id: 'youtube_$videoId',
             title: snippet['title'] as String? ?? '',
             description: snippet['description'] as String? ?? '',
             thumbnail: thumbnail,
             source: 'youtube',
-            contentType: 'video',
+            contentType: isShort ? 'short' : 'video',
             url: 'https://youtube.com/watch?v=$videoId',
             category: query,
-            popularityScore: 0.5,
-          );
-        }).toList();
+            popularityScore: 0.4,
+          ));
+        }
 
         _cache[query] = results;
         return results;
@@ -71,5 +106,15 @@ class YouTubeService {
       debugPrint('YouTube search error: $e');
       return [];
     }
+  }
+
+  int _parseIsoDurationToSeconds(String iso) {
+    final regex = RegExp(r'PT(?:(\d+)H)?(?:(\d+)M)?(?:(\d+)S)?');
+    final match = regex.firstMatch(iso);
+    if (match == null) return 0;
+    final hours = int.tryParse(match.group(1) ?? '0') ?? 0;
+    final minutes = int.tryParse(match.group(2) ?? '0') ?? 0;
+    final seconds = int.tryParse(match.group(3) ?? '0') ?? 0;
+    return hours * 3600 + minutes * 60 + seconds;
   }
 }
