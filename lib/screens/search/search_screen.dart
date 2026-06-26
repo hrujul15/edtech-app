@@ -7,8 +7,8 @@ import 'package:edtech_app/services/youtube_service.dart';
 import 'package:edtech_app/widgets/content_card.dart';
 import 'package:edtech_app/services/auth_service.dart';
 import 'package:edtech_app/services/firestore_service.dart';
+import 'package:edtech_app/screens/detail/video_detail_screen.dart';
 import 'package:edtech_app/screens/detail/article_detail_screen.dart';
-import 'package:url_launcher/url_launcher.dart';
 
 class SearchScreen extends StatefulWidget {
   const SearchScreen({super.key});
@@ -118,36 +118,20 @@ class _SearchScreenState extends State<SearchScreen> {
   }
 
   Future<void> _openContent(Content content) async {
+    if (!mounted) return;
     if (content.source == 'youtube') {
-      final videoId = content.id.replaceFirst('youtube_', '');
-      final appUri = Uri.parse('vnd.youtube://$videoId');
-      final webUri = Uri.parse(content.url);
-
-      if (await canLaunchUrl(appUri)) {
-        await launchUrl(appUri, mode: LaunchMode.externalApplication);
-        return;
-      }
-
-      if (await canLaunchUrl(webUri)) {
-        await launchUrl(webUri, mode: LaunchMode.externalApplication);
-        return;
-      }
-
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Could not open video.')),
-        );
-      }
-      return;
-    }
-
-    if (mounted) {
       Navigator.of(context).push(
         MaterialPageRoute(
-          builder: (_) => ArticleDetailScreen(content: content),
+          builder: (_) => VideoDetailScreen(content: content),
         ),
       );
+      return;
     }
+    Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (_) => ArticleDetailScreen(content: content),
+      ),
+    );
   }
 
   @override

@@ -2,6 +2,9 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:edtech_app/models/content_model.dart';
 import 'package:edtech_app/services/firestore_service.dart';
+import 'package:edtech_app/services/gemini_service.dart';
+import 'package:edtech_app/services/transcript_service.dart';
+import 'package:edtech_app/screens/detail/note_detail_screen.dart';
 
 class VideoDetailScreen extends StatefulWidget {
   final Content content;
@@ -14,6 +17,7 @@ class VideoDetailScreen extends StatefulWidget {
 
 class _VideoDetailScreenState extends State<VideoDetailScreen> {
   final FirestoreService _firestoreService = FirestoreService();
+  final TranscriptService _transcriptService = TranscriptService();
   bool _isSaving = false;
 
   @override
@@ -53,6 +57,84 @@ class _VideoDetailScreenState extends State<VideoDetailScreen> {
         setState(() {
           _isSaving = false;
         });
+      }
+    }
+  }
+
+  Future<void> _generateNotes() async {
+    // Show loading dialog
+    if (!mounted) return;
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (_) => const AlertDialog(
+        content: Row(
+          children: [
+            CircularProgressIndicator(),
+            SizedBox(width: 20),
+            Text('Generating notes…'),
+          ],
+        ),
+      ),
+    );
+
+    try {
+      // Fetch transcript
+      final transcript = await _transcriptService.getYouTubeTranscript(
+        widget.content.id,
+      );
+
+      if (transcript.isEmpty) {
+        if (mounted) {
+          Navigator.of(context).pop(); // close dialog
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('Transcript not available for this video.'),
+            ),
+          );
+        }
+        return;
+      }
+
+      // Generate notes via Gemini
+      final notes = await GeminiService.generateNotesFromText(
+        transcript,
+        widget.content.title,
+      );
+      // Auto-save immediately after generation
+      final uid = FirebaseAuth.instance.currentUser?.uid;
+      if (uid != null) {
+        // final noteId = DateTime.now().millisecondsSinceEpoch.toString();
+        final noteId = widget.content.url.replaceAll(RegExp(r'[^\w]'), '_');
+        await _firestoreService.saveNote(
+          uid,
+          noteId,
+          widget.content.title,
+          notes,
+          widget.content.url,
+          'youtube',
+        );
+      }
+      if (!mounted) return;
+      Navigator.of(context).pop(); // close dialog
+
+      // Navigate to NoteDetailScreen
+      Navigator.of(context).push(
+        MaterialPageRoute(
+          builder: (_) => NoteDetailScreen(
+            noteContent: notes,
+            title: widget.content.title,
+            sourceUrl: widget.content.url,
+            sourceType: 'youtube',
+          ),
+        ),
+      );
+    } catch (e) {
+      if (mounted) {
+        Navigator.of(context).pop(); // close dialog
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text('Failed to generate notes: $e')));
       }
     }
   }
@@ -97,6 +179,16 @@ class _VideoDetailScreenState extends State<VideoDetailScreen> {
                   Text(
                     widget.content.description,
                     style: Theme.of(context).textTheme.bodyLarge,
+                  ),
+                  const SizedBox(height: 24),
+                  // Generate Notes button
+                  SizedBox(
+                    width: double.infinity,
+                    child: FilledButton.icon(
+                      icon: const Icon(Icons.auto_awesome),
+                      label: const Text('Generate Notes'),
+                      onPressed: _generateNotes,
+                    ),
                   ),
                 ],
               ),

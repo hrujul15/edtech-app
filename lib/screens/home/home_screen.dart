@@ -8,9 +8,11 @@ import 'package:edtech_app/services/youtube_service.dart';
 import 'package:edtech_app/services/devto_service.dart';
 import 'package:edtech_app/services/ranking_service.dart';
 import 'package:edtech_app/widgets/content_card.dart';
+import 'package:edtech_app/screens/detail/video_detail_screen.dart';
 import 'package:edtech_app/screens/detail/article_detail_screen.dart';
 import 'package:edtech_app/screens/search/search_screen.dart';
 import 'package:edtech_app/screens/saved/saved_screen.dart';
+import 'package:edtech_app/screens/notes/saved_notes_screen.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 class HomeScreen extends StatefulWidget {
@@ -334,36 +336,24 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   Future<void> _openContent(Content content) async {
+    if (!mounted) return;
+
     if (content.source == 'youtube') {
-      final videoId = content.id.replaceFirst('youtube_', '');
-      final appUri = Uri.parse('vnd.youtube://$videoId');
-      final webUri = Uri.parse(content.url);
-
-      if (await canLaunchUrl(appUri)) {
-        await launchUrl(appUri, mode: LaunchMode.externalApplication);
-        return;
-      }
-
-      if (await canLaunchUrl(webUri)) {
-        await launchUrl(webUri, mode: LaunchMode.externalApplication);
-        return;
-      }
-
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Could not open video.')),
-        );
-      }
+      // Navigate to VideoDetailScreen so the user can Generate Notes
+      Navigator.of(context).push(
+        MaterialPageRoute(
+          builder: (_) => VideoDetailScreen(content: content),
+        ),
+      );
       return;
     }
 
-    if (mounted) {
-      Navigator.of(context).push(
-        MaterialPageRoute(
-          builder: (_) => ArticleDetailScreen(content: content),
-        ),
-      );
-    }
+    // Dev.to articles → ArticleDetailScreen (with Generate Notes FAB)
+    Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (_) => ArticleDetailScreen(content: content),
+      ),
+    );
   }
 
   @override
@@ -373,16 +363,22 @@ class _HomeScreenState extends State<HomeScreen> {
       _buildHomeBody(),
       const SearchScreen(),
       const SavedScreen(),
+      const SavedNotesScreen(),
     ];
 
     return Scaffold(
       body: IndexedStack(index: _currentIndex, children: pages),
       bottomNavigationBar: BottomNavigationBar(
         currentIndex: _currentIndex,
+        type: BottomNavigationBarType.fixed,
+        backgroundColor: Theme.of(context).colorScheme.surface,
+        selectedItemColor: Theme.of(context).colorScheme.primary,
+        unselectedItemColor:
+            Theme.of(context).colorScheme.onSurface.withOpacity(0.55),
+        selectedLabelStyle: const TextStyle(fontWeight: FontWeight.w600),
         onTap: (index) {
           setState(() => _currentIndex = index);
           if (index == 0) {
-            // Re-rank existing items locally instead of re-fetching from APIs
             _reRankHomeSections();
           }
         },
@@ -390,6 +386,7 @@ class _HomeScreenState extends State<HomeScreen> {
           BottomNavigationBarItem(icon: Icon(Icons.home), label: 'Home'),
           BottomNavigationBarItem(icon: Icon(Icons.search), label: 'Search'),
           BottomNavigationBarItem(icon: Icon(Icons.bookmark), label: 'Saved'),
+          BottomNavigationBarItem(icon: Icon(Icons.notes), label: 'Notes'),
         ],
       ),
     );

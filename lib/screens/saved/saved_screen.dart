@@ -1,5 +1,6 @@
 import 'dart:async';
 
+import 'package:edtech_app/screens/detail/video_detail_screen.dart';
 import 'package:flutter/material.dart';
 import 'package:edtech_app/models/content_model.dart';
 import 'package:edtech_app/services/auth_service.dart';
@@ -124,38 +125,58 @@ class _SavedScreenState extends State<SavedScreen> {
     );
   }
 
-  Future<void> _openContent(Content content) async {
+Future<void> _openContent(Content content) async {
+    if (!mounted) return;
+
     if (content.source == 'youtube') {
-      final videoId = content.id.replaceFirst('youtube_', '');
-      final appUri = Uri.parse('vnd.youtube://$videoId');
-      final webUri = Uri.parse(content.url);
-
-      if (await canLaunchUrl(appUri)) {
-        await launchUrl(appUri, mode: LaunchMode.externalApplication);
-        return;
-      }
-
-      if (await canLaunchUrl(webUri)) {
-        await launchUrl(webUri, mode: LaunchMode.externalApplication);
-        return;
-      }
-
-      if (mounted) {
-        ScaffoldMessenger.of(
-          context,
-        ).showSnackBar(const SnackBar(content: Text('Could not open video.')));
-      }
+      // Navigate to VideoDetailScreen so the user can Generate Notes
+      Navigator.of(context).push(
+        MaterialPageRoute(
+          builder: (_) => VideoDetailScreen(content: content),
+        ),
+      );
       return;
     }
 
-    if (mounted) {
-      Navigator.of(context).push(
-        MaterialPageRoute(
-          builder: (_) => ArticleDetailScreen(content: content),
-        ),
-      );
-    }
+    // Dev.to articles → ArticleDetailScreen (with Generate Notes FAB)
+    Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (_) => ArticleDetailScreen(content: content),
+      ),
+    );
   }
+  // Future<void> _openContent(Content content) async {
+  //   if (content.source == 'youtube') {
+  //     final videoId = content.id.replaceFirst('youtube_', '');
+  //     final appUri = Uri.parse('vnd.youtube://$videoId');
+  //     final webUri = Uri.parse(content.url);
+
+  //     if (await canLaunchUrl(appUri)) {
+  //       await launchUrl(appUri, mode: LaunchMode.externalApplication);
+  //       return;
+  //     }
+
+  //     if (await canLaunchUrl(webUri)) {
+  //       await launchUrl(webUri, mode: LaunchMode.externalApplication);
+  //       return;
+  //     }
+
+  //     if (mounted) {
+  //       ScaffoldMessenger.of(
+  //         context,
+  //       ).showSnackBar(const SnackBar(content: Text('Could not open video.')));
+  //     }
+  //     return;
+  //   }
+
+  //   if (mounted) {
+  //     Navigator.of(context).push(
+  //       MaterialPageRoute(
+  //         builder: (_) => ArticleDetailScreen(content: content),
+  //       ),
+  //     );
+  //   }
+  // }
 
   @override
   void dispose() {

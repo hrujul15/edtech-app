@@ -4,6 +4,9 @@ import 'package:flutter/material.dart';
 import 'package:webview_flutter/webview_flutter.dart';
 import 'package:edtech_app/models/content_model.dart';
 import 'package:edtech_app/services/firestore_service.dart';
+import 'package:edtech_app/services/gemini_service.dart';
+import 'package:edtech_app/services/transcript_service.dart';
+import 'package:edtech_app/screens/detail/note_detail_screen.dart';
 
 class ArticleDetailScreen extends StatefulWidget {
   final Content content;
@@ -94,6 +97,69 @@ class _ArticleDetailScreenState extends State<ArticleDetailScreen> {
     }
   }
 
+  Future<void> _generateNotes() async {
+    if (!mounted) return;
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (_) => const AlertDialog(
+        content: Row(
+          children: [
+            CircularProgressIndicator(),
+            SizedBox(width: 20),
+            Text('Generating notes…'),
+          ],
+        ),
+      ),
+    );
+
+    try {
+      // For Dev.to articles, combine title + description
+      final transcriptService = TranscriptService();
+      final articleText = transcriptService.getArticleText(widget.content);
+
+      final notes = await GeminiService.generateNotesFromText(
+        articleText,
+        widget.content.title,
+      );
+      // Auto-save immediately after generation
+      final uid = FirebaseAuth.instance.currentUser?.uid;
+      if (uid != null) {
+        print("done");
+        // final noteId = DateTime.now().millisecondsSinceEpoch.toString();
+        final noteId = widget.content.url.replaceAll(RegExp(r'[^\w]'), '_');
+        await _firestoreService.saveNote(
+          uid,
+          noteId,
+          widget.content.title,
+          notes,
+          widget.content.url,
+          'devto',
+        );
+      }
+      if (!mounted) return;
+      Navigator.of(context).pop(); // close dialog
+
+      Navigator.of(context).push(
+        MaterialPageRoute(
+          builder: (_) => NoteDetailScreen(
+            noteContent: notes,
+            title: widget.content.title,
+            sourceUrl: widget.content.url,
+            sourceType: 'devto',
+          ),
+        ),
+      );
+    } catch (e) {
+      if (mounted) {
+        Navigator.of(context).pop(); // close dialog
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text('Failed to generate notes: $e')));
+      }
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -119,9 +185,14 @@ class _ArticleDetailScreenState extends State<ArticleDetailScreen> {
       body: Stack(
         children: [
           WebViewWidget(controller: _webViewController),
-          if (_isLoading)
-            const Center(child: CircularProgressIndicator()),
+          if (_isLoading) const Center(child: CircularProgressIndicator()),
         ],
+      ),
+      // Generate Notes FAB
+      floatingActionButton: FloatingActionButton.extended(
+        onPressed: _generateNotes,
+        icon: const Icon(Icons.auto_awesome),
+        label: const Text('Generate Notes'),
       ),
     );
   }

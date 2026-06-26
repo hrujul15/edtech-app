@@ -1,5 +1,6 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:edtech_app/models/content_model.dart';
+import 'package:edtech_app/models/note_model.dart';
 import 'package:edtech_app/models/user_model.dart';
 
 class FirestoreService {
@@ -82,5 +83,70 @@ class FirestoreService {
     await _firestore.collection('users').doc(uid).update({
       'categoryScores.$category': FieldValue.increment(1.0),
     });
+  }
+
+  // ── Notes ──────────────────────────────────────────────────────────────────
+
+  /// Save a Gemini-generated note to users/{uid}/savedNotes/{noteId}
+  Future<void> saveNote(
+    String uid,
+    String noteId,
+    String title,
+    String content,
+    String sourceUrl,
+    String sourceType,
+  ) async {
+    final note = NoteModel(
+      id: noteId,
+      title: title,
+      content: content,
+      sourceUrl: sourceUrl,
+      sourceType: sourceType,
+      createdAt: DateTime.now(),
+    );
+    await _firestore
+        .collection('users')
+        .doc(uid)
+        .collection('savedNotes')
+        .doc(noteId)
+        .set(note.toJson());
+  }
+
+  /// Retrieve all saved notes for a user, ordered by creation time (newest first)
+  Future<List<NoteModel>> getNotes(String uid) async {
+    final querySnapshot = await _firestore
+        .collection('users')
+        .doc(uid)
+        .collection('savedNotes')
+        .orderBy('createdAt', descending: true)
+        .get();
+
+    return querySnapshot.docs
+        .map((doc) => NoteModel.fromJson(doc.data()))
+        .toList();
+  }
+
+  /// Update the content of an existing note (e.g. when the user edits it)
+  Future<void> updateNote(
+    String uid,
+    String noteId,
+    String newContent,
+  ) async {
+    await _firestore
+        .collection('users')
+        .doc(uid)
+        .collection('savedNotes')
+        .doc(noteId)
+        .update({'content': newContent});
+  }
+
+  /// Delete a saved note
+  Future<void> deleteNote(String uid, String noteId) async {
+    await _firestore
+        .collection('users')
+        .doc(uid)
+        .collection('savedNotes')
+        .doc(noteId)
+        .delete();
   }
 }
