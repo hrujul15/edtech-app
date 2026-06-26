@@ -8,6 +8,7 @@ class FirestoreService {
 
   /// Save interests selected during onboarding
   Future<void> saveInterests(String uid, List<String> interests) async {
+    
     await _firestore.collection('users').doc(uid).update({
       'interests': interests,
     });

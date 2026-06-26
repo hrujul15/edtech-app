@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:edtech_app/services/auth_service.dart';
 import 'package:edtech_app/services/firestore_service.dart';
+import 'package:edtech_app/services/cache_service.dart';
 
 class InterestPickerScreen extends StatefulWidget {
   const InterestPickerScreen({super.key});
@@ -12,7 +13,7 @@ class InterestPickerScreen extends StatefulWidget {
 class _InterestPickerScreenState extends State<InterestPickerScreen> {
   final _authService = AuthService();
   final _firestoreService = FirestoreService();
-
+  final _cacheService = CacheService();
   final List<String> _topics = [
     'Programming',
     'Math',
@@ -56,7 +57,8 @@ class _InterestPickerScreenState extends State<InterestPickerScreen> {
       if (uid == null) {
         throw Exception('User is not logged in.');
       }
-
+      await _cacheService
+          .clearAll(); // wipe cache so home refreshes with new interests
       await _firestoreService.saveInterests(uid, _selectedTopics.toList());
 
       if (mounted) {
@@ -113,11 +115,15 @@ class _InterestPickerScreenState extends State<InterestPickerScreen> {
                   label: Text(
                     '${_selectedTopics.length} selected (min 3)',
                     style: TextStyle(
-                      color: isButtonEnabled ? Colors.green[800] : Colors.blueGrey[800],
+                      color: isButtonEnabled
+                          ? Colors.green[800]
+                          : Colors.blueGrey[800],
                       fontWeight: FontWeight.w600,
                     ),
                   ),
-                  backgroundColor: isButtonEnabled ? Colors.green[50] : Colors.blueGrey[50],
+                  backgroundColor: isButtonEnabled
+                      ? Colors.green[50]
+                      : Colors.blueGrey[50],
                 ),
               ),
               const SizedBox(height: 24),
@@ -157,7 +163,9 @@ class _InterestPickerScreenState extends State<InterestPickerScreen> {
                           color: isSelected ? Colors.blue[600] : Colors.white,
                           borderRadius: BorderRadius.circular(16),
                           border: Border.all(
-                            color: isSelected ? Colors.blue[600]! : Colors.grey[300]!,
+                            color: isSelected
+                                ? Colors.blue[600]!
+                                : Colors.grey[300]!,
                             width: 2,
                           ),
                           boxShadow: isSelected
@@ -166,7 +174,7 @@ class _InterestPickerScreenState extends State<InterestPickerScreen> {
                                     color: Colors.blue.withValues(alpha: 0.3),
                                     blurRadius: 8,
                                     offset: const Offset(0, 4),
-                                  )
+                                  ),
                                 ]
                               : [],
                         ),
@@ -176,7 +184,9 @@ class _InterestPickerScreenState extends State<InterestPickerScreen> {
                             style: TextStyle(
                               fontSize: 16,
                               fontWeight: FontWeight.bold,
-                              color: isSelected ? Colors.white : Colors.blueGrey[800],
+                              color: isSelected
+                                  ? Colors.white
+                                  : Colors.blueGrey[800],
                             ),
                           ),
                         ),
@@ -187,7 +197,9 @@ class _InterestPickerScreenState extends State<InterestPickerScreen> {
               ),
               const SizedBox(height: 20),
               ElevatedButton(
-                onPressed: (isButtonEnabled && !_isLoading) ? _handleContinue : null,
+                onPressed: (isButtonEnabled && !_isLoading)
+                    ? _handleContinue
+                    : null,
                 style: ElevatedButton.styleFrom(
                   backgroundColor: Colors.blue[700],
                   disabledBackgroundColor: Colors.grey[300],
@@ -203,7 +215,9 @@ class _InterestPickerScreenState extends State<InterestPickerScreen> {
                         width: 24,
                         child: CircularProgressIndicator(
                           strokeWidth: 2,
-                          valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+                          valueColor: AlwaysStoppedAnimation<Color>(
+                            Colors.white,
+                          ),
                         ),
                       )
                     : const Text(

@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'package:edtech_app/services/cache_service.dart';
 import 'package:flutter/material.dart';
 import 'package:edtech_app/models/content_model.dart';
 import 'package:edtech_app/models/user_model.dart';
@@ -7,14 +8,13 @@ import 'package:edtech_app/services/firestore_service.dart';
 import 'package:edtech_app/services/youtube_service.dart';
 import 'package:edtech_app/services/devto_service.dart';
 import 'package:edtech_app/services/wikipedia_service.dart';
-import 'package:edtech_app/services/openlibrary_service.dart';
+// import 'package:edtech_app/services/openlibrary_service.dart';
 import 'package:edtech_app/services/ranking_service.dart';
 import 'package:edtech_app/widgets/content_card.dart';
 import 'package:edtech_app/screens/detail/video_detail_screen.dart';
 import 'package:edtech_app/screens/detail/article_detail_screen.dart';
 import 'package:edtech_app/screens/saved/saved_screen.dart';
 import 'package:edtech_app/screens/notes/saved_notes_screen.dart';
-import 'package:url_launcher/url_launcher.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -29,9 +29,9 @@ class _HomeScreenState extends State<HomeScreen> {
   final YouTubeService _youtubeService = YouTubeService();
   final DevToService _devtoService = DevToService();
   final WikipediaService _wikipediaService = WikipediaService();
-  final OpenLibraryService _openLibraryService = OpenLibraryService();
+  // final OpenLibraryService _openLibraryService = OpenLibraryService();
   final RankingService _rankingService = RankingService();
-
+  final CacheService _cacheService = CacheService();
   int _currentIndex = 0; // Bottom nav index
 
   bool _isLoading = true;
@@ -41,7 +41,7 @@ class _HomeScreenState extends State<HomeScreen> {
   List<_CategorySection> _categorySections = [];
   // Keep the raw, unranked items for each category so we can re-rank locally
   final Map<String, List<Content>> _rawCategoryItems = {};
-
+  final Map<String, List<Content>> _searchCache = {};
   List<Content> _searchResults = [];
   bool _isSearching = false;
   bool _isSearchLoading = false;
@@ -61,9 +61,7 @@ class _HomeScreenState extends State<HomeScreen> {
     try {
       final uid = _authService.currentUid;
       if (uid == null) {
-        if (mounted) {
-          Navigator.of(context).pushReplacementNamed('/login');
-        }
+        if (mounted) Navigator.of(context).pushReplacementNamed('/login');
         return;
       }
 
@@ -74,55 +72,100 @@ class _HomeScreenState extends State<HomeScreen> {
         return;
       }
 
-      // Determine top 2 categories by score (pass the fresh user, not _userModel)
-      final topCategories = _getTopCategories(user.categoryScores, 2, user.interests);
-
-      // For each top category, fetch content from both APIs
-      final sections = <_CategorySection>[];
-      for (final category in topCategories) {
-        final results = await Future.wait<List<Content>>([
-          _youtubeService.searchYouTube(category),
-          _devtoService.searchDevTo(category),
-          _wikipediaService.searchWikipedia(category),
-          _openLibraryService.searchBooks(category),
-        ]);
-        final combined = [...results[0], ...results[1], ...results[2], ...results[3]];
-        // store raw combined items so we can re-rank locally later
-        _rawCategoryItems[category] = combined;
-        final ranked = _rankingService.rankContent(
-          combined,
-          category,
-          user.categoryScores,
-        );
-        sections.add(_CategorySection(category: category, items: ranked));
-      }
-
       if (mounted) {
         setState(() {
           _userModel = user;
-          _categorySections = sections;
-          _isLoading = false;
+          _isLoading = false; // 👈 stop spinner early, show page immediately
+          _categorySections = [];
         });
       }
 
-      // Start listening to saved items
+      // Start listening to saved items early too
       _savedItemsSub?.cancel();
       _savedItemsSub = _firestoreService.getSavedContentIdsStream(uid).listen((
         ids,
       ) {
-        if (mounted) {
-          setState(() {
-            _savedItemIds = ids;
+        if (mounted) setState(() => _savedItemIds = ids);
+      });
+
+      final topCategories = _getTopCategories(
+        user.categoryScores,
+        2,
+        user.interests,
+      );
+      // Replace the category fetching loop in _loadHomeData with this:
+      for (final category in topCategories) {
+        // Check cache first
+        final cached = await _cacheService.getCategoryResults(category);
+
+        if (cached != null) {
+          // Cache hit — show instantly, no API calls
+          _rawCategoryItems[category] = cached;
+          final ranked = _rankingService.rankContent(
+            cached,
+            category,
+            user.categoryScores,
+          );
+          if (mounted) {
+            setState(() {
+              _categorySections.add(
+                _CategorySection(category: category, items: ranked),
+              );
+            });
+          }
+          continue; // skip API calls for this category
+        }
+
+        // Cache miss — fetch from APIs progressively
+        List<Content> categoryItems = [];
+
+        final futures = [
+          _youtubeService.searchYouTube(category),
+          _devtoService.searchDevTo(category),
+          _wikipediaService.searchWikipedia(category),
+        ];
+
+        for (final future in futures) {
+          future.then((results) {
+            if (!mounted) return;
+            categoryItems = [...categoryItems, ...results];
+            _rawCategoryItems[category] = categoryItems;
+
+            final ranked = _rankingService.rankContent(
+              categoryItems,
+              category,
+              user.categoryScores,
+            );
+
+            final existingIndex = _categorySections.indexWhere(
+              (s) => s.category == category,
+            );
+
+            setState(() {
+              if (existingIndex >= 0) {
+                _categorySections[existingIndex] = _CategorySection(
+                  category: category,
+                  items: ranked,
+                );
+              } else {
+                _categorySections.add(
+                  _CategorySection(category: category, items: ranked),
+                );
+              }
+            });
           });
         }
-      });
-    } catch (e) {
-      debugPrint('Error loading home data: $e');
-      if (mounted) {
-        setState(() {
-          _isLoading = false;
+
+        // After all 3 APIs finish, save to cache
+        Future.wait(futures).then((_) {
+          if (categoryItems.isNotEmpty) {
+            _cacheService.saveCategoryResults(category, categoryItems);
+          }
         });
       }
+    } catch (e) {
+      debugPrint('Error loading home data: $e');
+      if (mounted) setState(() => _isLoading = false);
     }
   }
 
@@ -155,10 +198,17 @@ class _HomeScreenState extends State<HomeScreen> {
   Future<void> _search(String query) async {
     final trimmed = query.trim();
     if (trimmed.isEmpty) {
-      setState(() {
-        _isSearching = false;
-      });
+      setState(() => _isSearching = false);
       return;
+    }
+    if (_searchCache.containsKey(trimmed)) {
+      setState(() {
+        _isSearching = true;
+        _isSearchLoading = false;
+        _searchResults = _searchCache[trimmed]!;
+        _lastQuery = trimmed;
+      });
+      return; // skip API calls entirely
     }
 
     setState(() {
@@ -168,29 +218,39 @@ class _HomeScreenState extends State<HomeScreen> {
       _lastQuery = trimmed;
     });
 
-    try {
-      final responses = await Future.wait<List<Content>>([
-        _youtubeService.searchYouTube(trimmed),
-        _devtoService.searchDevTo(trimmed),
-        _wikipediaService.searchWikipedia(trimmed),
-        _openLibraryService.searchBooks(trimmed),
-      ]);
+    // Each API updates results as soon as IT finishes
+    final futures = [
+      _youtubeService.searchYouTube(trimmed),
+      _devtoService.searchDevTo(trimmed),
+      _wikipediaService.searchWikipedia(trimmed),
+    ];
 
-      final combined = [...responses[0], ...responses[1], ...responses[2], ...responses[3]];
-      final ranked = _rankingService.rankContent(combined, trimmed, _userModel?.categoryScores ?? {});
-      setState(() {
-        _searchResults = ranked;
-      });
-    } catch (error) {
-      debugPrint('Search error: $error');
-      setState(() {
-        _searchResults = [];
-      });
-    } finally {
-      setState(() {
-        _isSearchLoading = false;
+    for (final future in futures) {
+      future.then((results) {
+        if (!mounted) return;
+        setState(() {
+          _searchResults = _rankingService.rankContent(
+            [..._searchResults, ...results],
+            trimmed,
+            _userModel?.categoryScores ?? {},
+          );
+          _isSearchLoading = _searchResults.isEmpty;
+        });
       });
     }
+
+    // Stop spinner after all finish regardless
+    Future.wait(futures)
+        .then((_) {
+          if (mounted) {
+            _searchCache[trimmed] = _searchResults;
+            setState(() => _isSearchLoading = false);
+          }
+        })
+        .catchError((e) {
+          debugPrint('Search error: $e');
+          if (mounted) setState(() => _isSearchLoading = false);
+        });
   }
 
   /// Re-rank existing fetched items locally without refetching
@@ -263,7 +323,10 @@ class _HomeScreenState extends State<HomeScreen> {
               child: Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
-                  Text('Search Results', style: Theme.of(context).textTheme.titleLarge),
+                  Text(
+                    'Search Results',
+                    style: Theme.of(context).textTheme.titleLarge,
+                  ),
                   TextButton(
                     onPressed: () {
                       setState(() {
@@ -284,7 +347,9 @@ class _HomeScreenState extends State<HomeScreen> {
             else if (_searchResults.isEmpty)
               Padding(
                 padding: const EdgeInsets.all(32),
-                child: Center(child: Text('No results found for "$_lastQuery".')),
+                child: Center(
+                  child: Text('No results found for "$_lastQuery".'),
+                ),
               )
             else
               ..._searchResults.map((content) {
@@ -352,12 +417,6 @@ class _HomeScreenState extends State<HomeScreen> {
 
   /// Build a horizontal scrollable section for one category
   Widget _buildCategorySection(_CategorySection section) {
-    // Re-apply ranking here to ensure filters (shorts, language) and boosts are applied
-    final rankedItems = _rankingService.rankContent(
-      section.items,
-      section.category,
-      _userModel?.categoryScores ?? {},
-    );
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -370,14 +429,14 @@ class _HomeScreenState extends State<HomeScreen> {
         ),
         SizedBox(
           height: 380,
-          child: rankedItems.isEmpty
+          child: section.items.isEmpty
               ? const Center(child: Text('No content found'))
               : ListView.builder(
                   scrollDirection: Axis.horizontal,
                   padding: const EdgeInsets.symmetric(horizontal: 8),
-                  itemCount: rankedItems.length,
+                  itemCount: section.items.length,
                   itemBuilder: (context, index) {
-                    final content = rankedItems[index];
+                    final content = section.items[index];
                     final isSaved = _savedItemIds.contains(content.id);
                     return SizedBox(
                       width: 280,
@@ -426,18 +485,14 @@ class _HomeScreenState extends State<HomeScreen> {
 
     if (content.source == 'youtube') {
       Navigator.of(context).push(
-        MaterialPageRoute(
-          builder: (_) => VideoDetailScreen(content: content),
-        ),
+        MaterialPageRoute(builder: (_) => VideoDetailScreen(content: content)),
       );
       return;
     }
 
     // Dev.to, Wikipedia, Open Library → ArticleDetailScreen
     Navigator.of(context).push(
-      MaterialPageRoute(
-        builder: (_) => ArticleDetailScreen(content: content),
-      ),
+      MaterialPageRoute(builder: (_) => ArticleDetailScreen(content: content)),
     );
   }
 
@@ -457,8 +512,9 @@ class _HomeScreenState extends State<HomeScreen> {
         type: BottomNavigationBarType.fixed,
         backgroundColor: Theme.of(context).colorScheme.surface,
         selectedItemColor: Theme.of(context).colorScheme.primary,
-        unselectedItemColor:
-            Theme.of(context).colorScheme.onSurface.withOpacity(0.55),
+        unselectedItemColor: Theme.of(
+          context,
+        ).colorScheme.onSurface.withOpacity(0.55),
         selectedLabelStyle: const TextStyle(fontWeight: FontWeight.w600),
         onTap: (index) {
           setState(() => _currentIndex = index);
