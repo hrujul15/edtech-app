@@ -6,11 +6,12 @@ import 'package:edtech_app/services/auth_service.dart';
 import 'package:edtech_app/services/firestore_service.dart';
 import 'package:edtech_app/services/youtube_service.dart';
 import 'package:edtech_app/services/devto_service.dart';
+import 'package:edtech_app/services/wikipedia_service.dart';
+import 'package:edtech_app/services/openlibrary_service.dart';
 import 'package:edtech_app/services/ranking_service.dart';
 import 'package:edtech_app/widgets/content_card.dart';
 import 'package:edtech_app/screens/detail/video_detail_screen.dart';
 import 'package:edtech_app/screens/detail/article_detail_screen.dart';
-import 'package:edtech_app/screens/search/search_screen.dart';
 import 'package:edtech_app/screens/saved/saved_screen.dart';
 import 'package:edtech_app/screens/notes/saved_notes_screen.dart';
 import 'package:url_launcher/url_launcher.dart';
@@ -27,6 +28,8 @@ class _HomeScreenState extends State<HomeScreen> {
   final FirestoreService _firestoreService = FirestoreService();
   final YouTubeService _youtubeService = YouTubeService();
   final DevToService _devtoService = DevToService();
+  final WikipediaService _wikipediaService = WikipediaService();
+  final OpenLibraryService _openLibraryService = OpenLibraryService();
   final RankingService _rankingService = RankingService();
 
   int _currentIndex = 0; // Bottom nav index
@@ -38,6 +41,11 @@ class _HomeScreenState extends State<HomeScreen> {
   List<_CategorySection> _categorySections = [];
   // Keep the raw, unranked items for each category so we can re-rank locally
   final Map<String, List<Content>> _rawCategoryItems = {};
+
+  List<Content> _searchResults = [];
+  bool _isSearching = false;
+  bool _isSearchLoading = false;
+  String _lastQuery = '';
 
   StreamSubscription<Set<String>>? _savedItemsSub;
   Set<String> _savedItemIds = {};
@@ -66,8 +74,8 @@ class _HomeScreenState extends State<HomeScreen> {
         return;
       }
 
-      // Determine top 2 categories by score
-      final topCategories = _getTopCategories(user.categoryScores, 2);
+      // Determine top 2 categories by score (pass the fresh user, not _userModel)
+      final topCategories = _getTopCategories(user.categoryScores, 2, user.interests);
 
       // For each top category, fetch content from both APIs
       final sections = <_CategorySection>[];
@@ -75,8 +83,10 @@ class _HomeScreenState extends State<HomeScreen> {
         final results = await Future.wait<List<Content>>([
           _youtubeService.searchYouTube(category),
           _devtoService.searchDevTo(category),
+          _wikipediaService.searchWikipedia(category),
+          _openLibraryService.searchBooks(category),
         ]);
-        final combined = [...results[0], ...results[1]];
+        final combined = [...results[0], ...results[1], ...results[2], ...results[3]];
         // store raw combined items so we can re-rank locally later
         _rawCategoryItems[category] = combined;
         final ranked = _rankingService.rankContent(
@@ -121,10 +131,10 @@ class _HomeScreenState extends State<HomeScreen> {
   List<String> _getTopCategories(
     Map<String, double> categoryScores,
     int count,
+    List<String> interests,
   ) {
     if (categoryScores.isEmpty) {
       // Fall back to user interests
-      final interests = _userModel?.interests ?? [];
       return interests.take(count).toList();
     }
 
@@ -139,6 +149,47 @@ class _HomeScreenState extends State<HomeScreen> {
     await _authService.signOut();
     if (mounted) {
       Navigator.of(context).pushReplacementNamed('/login');
+    }
+  }
+
+  Future<void> _search(String query) async {
+    final trimmed = query.trim();
+    if (trimmed.isEmpty) {
+      setState(() {
+        _isSearching = false;
+      });
+      return;
+    }
+
+    setState(() {
+      _isSearching = true;
+      _isSearchLoading = true;
+      _searchResults = [];
+      _lastQuery = trimmed;
+    });
+
+    try {
+      final responses = await Future.wait<List<Content>>([
+        _youtubeService.searchYouTube(trimmed),
+        _devtoService.searchDevTo(trimmed),
+        _wikipediaService.searchWikipedia(trimmed),
+        _openLibraryService.searchBooks(trimmed),
+      ]);
+
+      final combined = [...responses[0], ...responses[1], ...responses[2], ...responses[3]];
+      final ranked = _rankingService.rankContent(combined, trimmed, _userModel?.categoryScores ?? {});
+      setState(() {
+        _searchResults = ranked;
+      });
+    } catch (error) {
+      debugPrint('Search error: $error');
+      setState(() {
+        _searchResults = [];
+      });
+    } finally {
+      setState(() {
+        _isSearchLoading = false;
+      });
     }
   }
 
@@ -186,79 +237,114 @@ class _HomeScreenState extends State<HomeScreen> {
       child: ListView(
         children: [
           // Search bar at top
-          GestureDetector(
-            onTap: () {
-              setState(() => _currentIndex = 1); // Switch to search tab
-            },
-            child: Container(
-              margin: const EdgeInsets.fromLTRB(16, 16, 16, 8),
-              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
-              decoration: BoxDecoration(
-                color: Colors.grey[200],
-                borderRadius: BorderRadius.circular(12),
-              ),
-              child: Row(
-                children: [
-                  Icon(Icons.search, color: Colors.grey[600]),
-                  const SizedBox(width: 12),
-                  Text(
-                    'Search articles and videos...',
-                    style: TextStyle(color: Colors.grey[600], fontSize: 16),
-                  ),
-                ],
+          Container(
+            margin: const EdgeInsets.fromLTRB(16, 16, 16, 8),
+            child: TextField(
+              textInputAction: TextInputAction.search,
+              onSubmitted: _search,
+              decoration: InputDecoration(
+                hintText: 'Search articles and videos...',
+                border: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(12),
+                  borderSide: BorderSide.none,
+                ),
+                filled: true,
+                fillColor: Colors.grey[200],
+                prefixIcon: Icon(Icons.search, color: Colors.grey[600]),
               ),
             ),
           ),
 
           const SizedBox(height: 8),
 
-          // Welcome header
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 16),
-            child: Text(
-              'Welcome, ${_userModel?.name ?? 'Learner'}!',
-              style: Theme.of(context).textTheme.headlineSmall,
+          if (_isSearching) ...[
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  Text('Search Results', style: Theme.of(context).textTheme.titleLarge),
+                  TextButton(
+                    onPressed: () {
+                      setState(() {
+                        _isSearching = false;
+                        _searchResults.clear();
+                      });
+                    },
+                    child: const Text('Clear'),
+                  ),
+                ],
+              ),
             ),
-          ),
+            if (_isSearchLoading)
+              const Padding(
+                padding: EdgeInsets.all(32),
+                child: Center(child: CircularProgressIndicator()),
+              )
+            else if (_searchResults.isEmpty)
+              Padding(
+                padding: const EdgeInsets.all(32),
+                child: Center(child: Text('No results found for "$_lastQuery".')),
+              )
+            else
+              ..._searchResults.map((content) {
+                final isSaved = _savedItemIds.contains(content.id);
+                return ContentCard(
+                  content: content,
+                  isSaved: isSaved,
+                  onSave: () => _toggleSaveContent(content, isSaved),
+                  onTap: () => _openContent(content),
+                );
+              }),
+          ] else ...[
+            // Welcome header
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 16),
+              child: Text(
+                'Welcome, ${_userModel?.name ?? 'Learner'}!',
+                style: Theme.of(context).textTheme.headlineSmall,
+              ),
+            ),
 
-          const SizedBox(height: 16),
+            const SizedBox(height: 16),
 
-          // Category sections
-          if (_categorySections.isEmpty)
-            const Padding(
-              padding: EdgeInsets.all(32),
-              child: Center(
-                child: Text(
-                  'Start exploring to get personalised recommendations!',
-                  textAlign: TextAlign.center,
-                  style: TextStyle(color: Colors.grey),
+            // Category sections
+            if (_categorySections.isEmpty)
+              const Padding(
+                padding: EdgeInsets.all(32),
+                child: Center(
+                  child: Text(
+                    'Start exploring to get personalised recommendations!',
+                    textAlign: TextAlign.center,
+                    style: TextStyle(color: Colors.grey),
+                  ),
+                ),
+              )
+            else
+              ..._categorySections.map(
+                (section) => _buildCategorySection(section),
+              ),
+
+            const SizedBox(height: 24),
+
+            // Logout button
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 16),
+              child: OutlinedButton.icon(
+                onPressed: _handleLogout,
+                icon: const Icon(Icons.logout, color: Colors.red),
+                label: const Text(
+                  'Sign Out',
+                  style: TextStyle(color: Colors.red),
+                ),
+                style: OutlinedButton.styleFrom(
+                  side: const BorderSide(color: Colors.red),
                 ),
               ),
-            )
-          else
-            ..._categorySections.map(
-              (section) => _buildCategorySection(section),
             ),
 
-          const SizedBox(height: 24),
-
-          // Logout button
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 16),
-            child: OutlinedButton.icon(
-              onPressed: _handleLogout,
-              icon: const Icon(Icons.logout, color: Colors.red),
-              label: const Text(
-                'Sign Out',
-                style: TextStyle(color: Colors.red),
-              ),
-              style: OutlinedButton.styleFrom(
-                side: const BorderSide(color: Colors.red),
-              ),
-            ),
-          ),
-
-          const SizedBox(height: 32),
+            const SizedBox(height: 32),
+          ],
         ],
       ),
     );
@@ -339,7 +425,6 @@ class _HomeScreenState extends State<HomeScreen> {
     if (!mounted) return;
 
     if (content.source == 'youtube') {
-      // Navigate to VideoDetailScreen so the user can Generate Notes
       Navigator.of(context).push(
         MaterialPageRoute(
           builder: (_) => VideoDetailScreen(content: content),
@@ -348,7 +433,7 @@ class _HomeScreenState extends State<HomeScreen> {
       return;
     }
 
-    // Dev.to articles → ArticleDetailScreen (with Generate Notes FAB)
+    // Dev.to, Wikipedia, Open Library → ArticleDetailScreen
     Navigator.of(context).push(
       MaterialPageRoute(
         builder: (_) => ArticleDetailScreen(content: content),
@@ -361,7 +446,6 @@ class _HomeScreenState extends State<HomeScreen> {
     // Pages for bottom nav tabs
     final List<Widget> pages = [
       _buildHomeBody(),
-      const SearchScreen(),
       const SavedScreen(),
       const SavedNotesScreen(),
     ];
@@ -384,7 +468,6 @@ class _HomeScreenState extends State<HomeScreen> {
         },
         items: const [
           BottomNavigationBarItem(icon: Icon(Icons.home), label: 'Home'),
-          BottomNavigationBarItem(icon: Icon(Icons.search), label: 'Search'),
           BottomNavigationBarItem(icon: Icon(Icons.bookmark), label: 'Saved'),
           BottomNavigationBarItem(icon: Icon(Icons.notes), label: 'Notes'),
         ],
