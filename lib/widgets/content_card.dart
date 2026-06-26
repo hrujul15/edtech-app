@@ -50,17 +50,13 @@ class ContentCard extends StatelessWidget {
                       Row(
                         children: [
                           Icon(
-                            content.source == 'youtube'
-                                ? Icons.play_circle_fill
-                                : Icons.article,
+                            _sourceIcon(content.source),
                             size: 16,
-                            color: content.source == 'youtube'
-                                ? Colors.red
-                                : Colors.blue,
+                            color: _sourceColor(content.source),
                           ),
                           const SizedBox(width: 4),
                           Text(
-                            content.source.toUpperCase(),
+                            _sourceLabel(content.source),
                             style: const TextStyle(
                               fontSize: 12,
                               fontWeight: FontWeight.bold,
@@ -111,5 +107,46 @@ class ContentCard extends StatelessWidget {
         ),
       ),
     );
+  }
+
+  static IconData _sourceIcon(String source) {
+    switch (source) {
+      case 'youtube':
+        return Icons.play_circle_fill;
+      case 'wikipedia':
+        return Icons.public;
+      case 'openlibrary':
+        return Icons.menu_book;
+      default:
+        return Icons.article;
+    }
+  }
+
+  static Color _sourceColor(String source) {
+    switch (source) {
+      case 'youtube':
+        return Colors.red;
+      case 'wikipedia':
+        return Colors.grey.shade700;
+      case 'openlibrary':
+        return Colors.brown;
+      default:
+        return Colors.blue;
+    }
+  }
+
+  static String _sourceLabel(String source) {
+    switch (source) {
+      case 'youtube':
+        return 'YOUTUBE';
+      case 'devto':
+        return 'DEV.TO';
+      case 'wikipedia':
+        return 'WIKIPEDIA';
+      case 'openlibrary':
+        return 'BOOK';
+      default:
+        return source.toUpperCase();
+    }
   }
 }
